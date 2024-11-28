@@ -1,0 +1,45 @@
+title: "human36m_train_ex"
+kind: "human36m"
+
+opt:
+  criterion: "mse"
+  mse_smooth_threshold: 400
+
+  n_actions_per_epochs: 999
+  seq_len: 10
+  n_joints: 17
+  n_epochs: 1000
+
+  batch_size: 96
+ 
+  lr: 0.001
+
+  save_3d_png: "True"
+  save_3d_png_freq: 10
+
+  pre_frame_weight: 1
+  
+
+model:
+  name: "lstm"
+
+  init_weights: False
+  checkpoint: ""
+
+  n_hidden_layer: 96
+  n_layers: 2
+
+dataset:
+  kind: "human36m"
+
+  shuffle: "True"
+  loader_num_workers: 4
+  
+  train:
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_train-linear.pkl"
+
+  val:
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-linear.pkl"
+
+
+
