@@ -28,12 +28,19 @@ from mvn.utils.pose_show_3d import save_3d_png
 def parse_args(work_directory: str):
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--config", type=str, default=os.path.join(work_directory, "experiments/human36m/train/human36m_train_ex.yaml"), help="Path, where config file is stored")
+    parser.add_argument("--config", type=str, default=None, help="Path, where config file is stored")
     parser.add_argument('--eval', action='store_true', help="If set, then only evaluation will be done")
     parser.add_argument('--eval_dataset', type=str, default='val', help="Dataset split on which evaluate. Can be 'train' and 'val'")
     parser.add_argument("--logdir", type=str, default=os.path.join(work_directory, "logs"), help="Path, where logs will be stored")
 
     args = parser.parse_args()
+
+    if args.config is None:
+        if args.eval:
+            args.config = os.path.join(work_directory, "experiments/human36m/eval/human36m_eval_ex.yaml")
+        else:
+            args.config = os.path.join(work_directory, "experiments/human36m/train/human36m_train_ex.yaml")
+
     return args
 
 def setup_human36m_dataloaders(config, is_train):
@@ -223,6 +230,10 @@ def main(args):
         "lstm": LstmModel
     }[config.model.name](3 * config.opt.n_joints, config.model.n_hidden_layer, 3 * config.opt.n_joints, config.model.n_layers).to(device)
 
+    if (config.model.init_weights):
+        print("Loading pretrained weights...")
+        model.load_state_dict(torch.load(config.model.checkpoint, weights_only=True))
+
     # criterion
     criterion_class = {
         "mse": KeypointsMSELoss,
@@ -259,9 +270,9 @@ def main(args):
 
     else:
         if args.eval_dataset == 'train':
-            one_epoch(model, criterion, opt, config, train_dataloader, device, epoch, is_train=True, experiment_dir=experiment_dir, writer=writer)
+            one_epoch(model, criterion, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
         else:
-            one_epoch(model, criterion, opt, config, val_dataloader, device, epoch, is_train=True, experiment_dir=experiment_dir, writer=writer)
+            one_epoch(model, criterion, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
 
 
 

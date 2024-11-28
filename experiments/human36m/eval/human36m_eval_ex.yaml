@@ -23,8 +23,8 @@ opt:
 model:
   name: "lstm"
 
-  init_weights: False
-  checkpoint: ""
+  init_weights: True
+  checkpoint: "G:\\Projects\\Joint_track\\logs\\human36m_train_ex_LstmModel@2024-11-28.15-30-12\\checkpoints\\0020\\weights.pth"
 
   n_hidden_layer: 96
   n_layers: 2
@@ -40,6 +40,4 @@ dataset:
 
   val:
     data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-linear.pkl"
-
-
 
