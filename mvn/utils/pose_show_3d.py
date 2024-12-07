@@ -2,13 +2,13 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 
-def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
+def save_3d_png(model, device, dataloader, experiment_dir, name, epoch, scaling_info):
     batch = next(iter(dataloader))
-    batch_x, batch_y = batch
+    batch_x, batch_y, _ = batch
     batch_x = batch_x[0]    # size: (seq_len, num_joints * 3)
-    batch_y = batch_y[0]    # size: (seq_len + 1, num_joints * 3)
+    batch_y = batch_y[0]    # size: (seq_len, num_joints * 3)
     batch_x = batch_x.unsqueeze(0)
-    output = model(batch_x.to(device))  # size: (1, seq_len + 1, num_joints * 3)
+    output = model(batch_x.to(device))  # size: (1, seq_len, num_joints * 3)
     output = output.squeeze(0)
 
     seq_len_plus_one, num_joints_times_3 = batch_y.shape
@@ -16,6 +16,19 @@ def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
 
     batch_y = batch_y.view(seq_len_plus_one, num_joints, 3).detach().cpu().numpy()
     output = output.view(seq_len_plus_one, num_joints, 3).detach().cpu().numpy()
+
+    # 反归一化或反缩放
+    if scaling_info["mode"] == "norm":
+        mean = scaling_info["mean"]
+        std = scaling_info["std"]
+        batch_y = batch_y * std + mean
+        output = output * std + mean
+
+    elif scaling_info["mode"] == "linear":
+        min_val = scaling_info["min"]
+        max_val = scaling_info["max"]
+        batch_y = batch_y * (max_val - min_val) + min_val
+        output = output * (max_val - min_val) + min_val
 
     # 关节连接方式
     connections = [

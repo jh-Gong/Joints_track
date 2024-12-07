@@ -15,20 +15,14 @@ class LstmModel(nn.Module):
         super().__init__()
  
         self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
-        self.fc_o = nn.Linear(hidden_size, output_size)
-        self.fc_n = nn.Linear(hidden_size, output_size)
+        self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x): 
-        x, (hn, _) = self.lstm(x)          # x is input, size: (batch, seq_len, input_size)
+        x, _ = self.lstm(x)          # x is input, size: (batch, seq_len, input_size)
         b, s, h = x.shape
         # 处理每一个时间步输出
         x = x.reshape(b * s, h)
-        x = self.fc_o(x)
+        x = self.fc(x)
         x = x.reshape(b, s, -1)
-        # 预测下一个时间输出
-        hn = hn[-1].reshape(b, h)
-        x_n = self.fc_n(hn).unsqueeze(1)    # Shape: (batch, 1, output_size)
-        # 拼接为一个输出
-        x = torch.cat((x, x_n), dim=1)
         return x
     

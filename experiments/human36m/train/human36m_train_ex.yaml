@@ -36,10 +36,10 @@ dataset:
   loader_num_workers: 4
   
   train:
-    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_train-linear.pkl"
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_train-linear.h5"
 
   val:
-    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-linear.pkl"
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-linear.h5"
 
 
 

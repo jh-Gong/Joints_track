@@ -44,4 +44,9 @@ python main.py \
 --logdir ./logs
 ```
 
+### 可视化
+```bash
+tensorboard --logdir ./logs
+```
+
 具体参数设置可在main.py内具体查看，直接使用会使用默认路径和参数。
