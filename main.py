@@ -131,7 +131,7 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
         
         # 计算平均损失
         avg_loss = total_loss / len(dataloader)
-        print(f'Epoch [{epoch+1}], Loss: {avg_loss:.4f}')
+        print(f'Epoch [{epoch+1}], Loss: {avg_loss:.10f}')
 
         # 记录每个epoch的平均损失
         if writer is not None:
@@ -191,6 +191,7 @@ def main(args):
             checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "{:04}".format(epoch))
             os.makedirs(checkpoint_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "weights.pth"))
+            one_epoch(model, criterion, opt, config, val_dataloader, device, epoch, val_scaling_info, is_train=False, experiment_dir=experiment_dir, writer=writer)
 
     else:
         if args.eval_dataset == 'train':

@@ -18,6 +18,7 @@ def load_hdf5_data(data_path):
             scaling_group = h5file['scaling_info']
             for key in scaling_group.keys():
                 scaling_info[key] = scaling_group[key][()]
+            scaling_info['mode'] = scaling_info['mode'].decode('utf-8')
             # 数据信息
             subjects = [key for key in h5file.keys() if key != 'scaling_info']
             for subject in tqdm(subjects, desc=f"Subjects"):
