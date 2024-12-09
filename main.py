@@ -114,9 +114,7 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
 
                 # 前向传播和反向梯度计算
                 outputs = model(batch_x) 
-                keypoints_binary_validity = torch.ones_like(outputs)
-                keypoints_binary_validity[:, -1, ...] = config.opt.pre_frame_weight
-                loss = criterion(outputs, batch_y, keypoints_binary_validity)
+                loss = criterion(outputs, batch_y)
                 if is_train:
                     opt.zero_grad()
                     loss.backward()
@@ -131,7 +129,7 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
         
         # 计算平均损失
         avg_loss = total_loss / len(dataloader)
-        print(f'Epoch [{epoch+1}], Loss: {avg_loss:.10f}')
+        print(f'Epoch [{epoch+1}], {name} Loss: {avg_loss:.10f}')
 
         # 记录每个epoch的平均损失
         if writer is not None:

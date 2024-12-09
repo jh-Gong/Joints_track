@@ -2,7 +2,7 @@ title: "human36m_train_ex"
 kind: "human36m"
 
 opt:
-  criterion: "mse"
+  criterion: "mae"
   mse_smooth_threshold: 400
 
   n_actions_per_epochs: 999
@@ -10,14 +10,12 @@ opt:
   n_joints: 17
   n_epochs: 1000
 
-  batch_size: 96
+  batch_size: 512
  
-  lr: 0.001
+  lr: 0.005
 
   save_3d_png: True
-  save_3d_png_freq: 10
-
-  pre_frame_weight: 1
+  save_3d_png_freq: 5
   
 
 model:

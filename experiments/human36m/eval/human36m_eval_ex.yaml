@@ -10,14 +10,13 @@ opt:
   n_joints: 17
   n_epochs: 1000
 
-  batch_size: 96
+  batch_size: 256
  
   lr: 0.001
 
   save_3d_png: True
   save_3d_png_freq: 10
 
-  pre_frame_weight: 1
   
 
 model:
