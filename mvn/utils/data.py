@@ -106,7 +106,7 @@ def setup_human36m_dataloaders(config: edict, is_train: bool):
         train_dataloader = DataLoader(
             train_dataset,
             batch_size=config.opt.batch_size,
-            shuffle=config.dataset.shuffle,
+            shuffle=True,
             num_workers=config.dataset.loader_num_workers
         )
 
@@ -119,7 +119,7 @@ def setup_human36m_dataloaders(config: edict, is_train: bool):
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=config.opt.batch_size,
-        shuffle=config.dataset.shuffle,
+        shuffle=False,
         num_workers=config.dataset.loader_num_workers
     )
 

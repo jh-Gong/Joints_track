@@ -2,28 +2,27 @@ title: "human36m_train_ex"
 kind: "human36m"
 
 opt:
-  criterion: "mse"
+  criterion: "mae"
   mse_smooth_threshold: 400
 
   n_actions_per_epochs: 999
   seq_len: 10
   n_joints: 17
-  n_epochs: 1000
+  n_epochs: 2000
 
-  batch_size: 256
+  batch_size: 512
  
-  lr: 0.001
+  lr: 0.005
 
   save_3d_png: True
-  save_3d_png_freq: 10
-
+  save_3d_png_freq: 5
   
 
 model:
   name: "lstm"
 
-  init_weights: True
-  checkpoint: "G:\\Projects\\Joint_track\\logs\\human36m_train_ex_LstmModel@12-08-00-15-22.2024\\checkpoints\\0009\\weights.pth"
+  init_weights: False
+  checkpoint: ""
 
   n_hidden_layer: 96
   n_layers: 2
@@ -31,7 +30,6 @@ model:
 dataset:
   kind: "human36m"
 
-  shuffle: True
   loader_num_workers: 4
   
   train:
@@ -39,4 +37,6 @@ dataset:
 
   val:
     data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-linear.h5"
+
+
 

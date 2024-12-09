@@ -10,7 +10,7 @@ opt:
   n_joints: 17
   n_epochs: 1000
 
-  batch_size: 512
+  batch_size: 2056
  
   lr: 0.005
 
@@ -19,7 +19,7 @@ opt:
   
 
 model:
-  name: "lstm"
+  name: "transformer"
 
   init_weights: False
   checkpoint: ""
@@ -30,7 +30,6 @@ model:
 dataset:
   kind: "human36m"
 
-  shuffle: True
   loader_num_workers: 4
   
   train:

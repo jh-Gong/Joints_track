@@ -10,7 +10,7 @@ from tensorboardX import SummaryWriter
 
 from mvn.utils import cfg
 from mvn.models.loss import KeypointsMSELoss, KeypointsMSESmoothLoss, KeypointsMAELoss
-from mvn.models.basicnet import LstmModel
+from mvn.models.model import LstmModel, TransformerModel
 from mvn.utils.data import setup_dataloaders
 import mvn.utils.misc as misc
 from mvn.utils.pose_show_3d import save_3d_png
@@ -149,8 +149,13 @@ def main(args):
     config = cfg.load_config(args.config)
 
     model = {
-        "lstm": LstmModel
-    }[config.model.name](3 * config.opt.n_joints, config.model.n_hidden_layer, 3 * config.opt.n_joints, config.model.n_layers).to(device)
+        "lstm": LstmModel,
+        "transformer": TransformerModel
+    }[config.model.name](
+        feature_dimension = 3 * config.opt.n_joints, 
+        hidden_size = config.model.n_hidden_layer, 
+        num_layers = config.model.n_layers
+        ).to(device)
 
     if (config.model.init_weights):
         print("Loading pretrained weights...")
