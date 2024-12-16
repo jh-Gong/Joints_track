@@ -203,12 +203,6 @@ def main(args):
     # experiment
     experiment_dir, writer = setup_experiment(config, type(model).__name__, is_train=not args.eval)
 
-    # 记录模型图
-    if config.opt.save_model_graph:
-        model.eval()
-        example_input = (torch.randn(config.opt.batch_size, config.opt.seq_len, 3).to(device), torch.randn(config.opt.batch_size, config.opt.seq_len, 16, 4).to(device))
-        writer.add_graph(model, example_input)
-
     if not args.eval:
         # train loop
         for epoch in range(config.opt.n_epochs):

@@ -17,8 +17,6 @@ opt:
   save_3d_png: True
   save_3d_png_freq: 10
 
-  save_model_graph: False
-
   save_keypoints_error: False
   save_keypoints_error_freq: 5
   
