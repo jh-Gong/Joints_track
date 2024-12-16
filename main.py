@@ -2,6 +2,7 @@ import os
 import shutil
 from datetime import datetime
 from tqdm import tqdm
+import json
 
 import torch
 from torch import autograd
@@ -13,7 +14,7 @@ from mvn.models.loss import KeypointsMSELoss, KeypointsMSESmoothLoss, KeypointsM
 from mvn.models.model import LstmModel, TransformerModel
 from mvn.utils.data import setup_dataloaders
 import mvn.utils.misc as misc
-from mvn.utils.pose_show_3d import save_3d_png
+from mvn.utils.visual import save_3d_png, get_keypoints_error
 
 def setup_experiment(config, model_name, is_train=True):
     """
@@ -64,7 +65,7 @@ def setup_experiment(config, model_name, is_train=True):
     # 返回实验目录路径和SummaryWriter对象
     return experiment_dir, writer
 
-def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_info, is_train=True, experiment_dir=None, writer=None):
+def one_epoch(model, criterion, opt, config, dataloader, device, epoch, is_train=True, experiment_dir=None, writer=None):
     """
     训练或验证模型一个epoch。
 
@@ -79,9 +80,6 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
     - is_train: 布尔值，表示是否为训练模式。
     - experiment_dir: 实验目录路径，用于保存结果。
     - writer: TensorBoard writer，用于记录训练过程。
-
-    返回:
-    无
     """
     # 根据训练或验证状态设置名称
     name = "train" if is_train else "val"
@@ -98,7 +96,7 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
     # 确认梯度计算是否使用
     grad_context = torch.autograd.enable_grad if is_train else torch.no_grad
     with grad_context():
-        # 初始化进度条
+        # 初始化
         iterator = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"{name} Epoch {epoch + 1}/{config.opt.n_epochs}")
         # 遍历数据集中的每个批次
         for batch_idx, batch in iterator:
@@ -108,13 +106,17 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
                     print("Found None batch")
                     continue
 
-                # 预处理batch
-                batch_x = batch[0].to(device)
-                batch_y = batch[1].to(device)
+                batch_root_x = batch[0]['root'].to(device)
+                batch_rotations_x = batch[0]['rotations'].to(device)
+
+                batch_root_y = batch[1]['root'].to(device)
+                batch_rotations_y = batch[1]['rotations'].to(device)
 
                 # 前向传播和反向梯度计算
-                outputs = model(batch_x) 
-                loss = criterion(outputs, batch_y)
+                root_out, rotations_out = model(batch_root_x, batch_rotations_x) 
+                root_loss = criterion(root_out, batch_root_y)
+                rotations_loss = criterion(rotations_out, batch_rotations_y)
+                loss = root_loss + 50000 * rotations_loss
                 if is_train:
                     opt.zero_grad()
                     loss.backward()
@@ -125,6 +127,8 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
 
                 # 使用TensorBoard记录损失
                 if writer is not None:
+                    writer.add_scalar(f'Loss/root_{name}', root_loss.item(), epoch * len(dataloader) + batch_idx)
+                    writer.add_scalar(f'Loss/rotations_{name}', rotations_loss.item(), epoch * len(dataloader) + batch_idx)
                     writer.add_scalar(f'Loss/batch_{name}', loss.item(), epoch * len(dataloader) + batch_idx)
         
         # 计算平均损失
@@ -138,9 +142,13 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, scaling_
     # 定期保存3D图形
     if config.opt.save_3d_png and epoch % config.opt.save_3d_png_freq == 0 and config.opt.n_joints == 17 :
         print("Saving 3d png...")
-        save_3d_png(model, device, dataloader, experiment_dir, name, epoch, scaling_info)
+        save_3d_png(model, device, dataloader, experiment_dir, name, epoch)
 
-    
+    # 计算关节平均误差
+    if config.opt.save_keypoints_error and epoch % config.opt.save_keypoints_error_freq == 0 and is_train == False:
+        return get_keypoints_error(model, device, dataloader)
+
+       
 def main(args):
     print("Number of available GPUs: {}".format(torch.cuda.device_count()))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -151,11 +159,19 @@ def main(args):
     model = {
         "lstm": LstmModel,
         "transformer": TransformerModel
-    }[config.model.name](
-        feature_dimension = 3 * config.opt.n_joints, 
-        hidden_size = config.model.n_hidden_layer, 
-        num_layers = config.model.n_layers
+    }[config.model.name]
+    
+    if config.model.name == "transformer":
+        model = model(
+            seq_len = config.opt.seq_len,
+            num_joints = config.opt.n_joints,
+            hidden_size = config.model.n_hidden_layer, 
+            num_layers = config.model.n_layers,
+            num_heads = config.model.n_heads,
+            dropout_probability = config.model.dropout
         ).to(device)
+    else:
+        raise NotImplementedError("Model not implemented")
 
     if (config.model.init_weights):
         print("Loading pretrained weights...")
@@ -176,31 +192,41 @@ def main(args):
     # optimizer
     opt = None
     if not args.eval:
-        model_total = sum([param.nelement() for param in model.parameters()])  # 计算模型参数
+        model_total = sum([param.nelement() for param in model.parameters()])  
         print("Number of model_total parameter: %.8fM" % (model_total / 1e6))
         opt = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.opt.lr)
 
     # datasets
     print("Loading data...")
-    train_dataloader, val_dataloader, train_scaling_info, val_scaling_info = setup_dataloaders(config, is_train=True if not args.eval else False) 
+    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=True if not args.eval else False) 
 
     # experiment
     experiment_dir, writer = setup_experiment(config, type(model).__name__, is_train=not args.eval)
 
+    # 记录模型图
+    if config.opt.save_model_graph:
+        model.eval()
+        example_input = (torch.randn(config.opt.batch_size, config.opt.seq_len, 3).to(device), torch.randn(config.opt.batch_size, config.opt.seq_len, 16, 4).to(device))
+        writer.add_graph(model, example_input)
+
     if not args.eval:
         # train loop
         for epoch in range(config.opt.n_epochs):
-            one_epoch(model, criterion, opt, config, train_dataloader, device, epoch, train_scaling_info, is_train=True, experiment_dir=experiment_dir, writer=writer)
+            one_epoch(model, criterion, opt, config, train_dataloader, device, epoch, is_train=True, experiment_dir=experiment_dir, writer=writer)
+            loss_dict = one_epoch(model, criterion, opt, config, val_dataloader, device, epoch, is_train=False, experiment_dir=experiment_dir, writer=writer)
             checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "{:04}".format(epoch))
             os.makedirs(checkpoint_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "weights.pth"))
-            one_epoch(model, criterion, opt, config, val_dataloader, device, epoch, val_scaling_info, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            if loss_dict is not None:
+                 with open(os.path.join(checkpoint_dir, "loss.json"), 'w') as f:
+                     json.dump(loss_dict, f, indent=4)
+            
 
     else:
         if args.eval_dataset == 'train':
-            one_epoch(model, criterion, opt, config, train_dataloader, device, 0, train_scaling_info, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            one_epoch(model, criterion, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
         else:
-            one_epoch(model, criterion, opt, config, val_dataloader, device, 0, val_scaling_info, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            one_epoch(model, criterion, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
 
 
 

@@ -1,5 +1,12 @@
+'''
+Date: 2024-12-09 18:42:46
+LastEditors: gjhhh 1377019164@qq.com
+LastEditTime: 2024-12-16 01:08:17
+Description: example
+'''
 import torch.nn as nn
-import math
+import torch
+import torch.nn.functional as F
 
 from .basicnet import PositionalEncoding
 
@@ -29,26 +36,49 @@ class LstmModel(nn.Module):
         return x
 
 class TransformerModel(nn.Module):
-    def __init__(self, feature_dimension=51, hidden_size=96, num_layers=2, num_heads=8, dropout_probability=0.1):
+    def __init__(self, seq_len = 5, num_joints=17, hidden_size=96, num_layers=2, num_heads=8, dropout_probability=0.1):
         super().__init__()
 
-        self.model_dimension = hidden_size
-        self.linear_mapping = nn.Linear(feature_dimension, hidden_size)
-        self.positional_encoding = PositionalEncoding(hidden_size, dropout_probability)
-        
-        encoder_layer = nn.TransformerEncoderLayer(d_model=hidden_size, nhead=num_heads, dropout=dropout_probability, batch_first=True)
-        self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.num_joints = num_joints
 
-        self.output_layer = nn.Linear(hidden_size, feature_dimension)
+        # 输入嵌入层
+        self.root_embedding = nn.Linear(3, hidden_size)
+        self.rotation_embedding = nn.Linear(4 * (num_joints - 1), hidden_size)
 
-    def forward(self, x):
-        """
-        x: 输入序列，形状为 [batch_size, seq_len, feature_dimension]
-        """
-        x = self.linear_mapping(x) * math.sqrt(self.model_dimension)
-        x = self.positional_encoding(x)
+        # 位置编码
+        self.pos_encoder = PositionalEncoding(hidden_size, dropout_probability)
 
-        memory = self.transformer_encoder(x)
+        # Transformer 编码器
+        encoder_layers = nn.TransformerEncoderLayer(hidden_size, nhead=num_heads, dim_feedforward=2048, dropout=dropout_probability, batch_first=True)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
 
-        output = self.output_layer(memory)
-        return output
+        # 输出层 
+        self.root_output_layer = nn.Linear(hidden_size, 3 * seq_len)
+        self.rotation_output_layer = nn.Linear(hidden_size, (num_joints - 1) * 4 * seq_len)
+
+    def forward(self, root, rotations):
+        batch_size, seq_len, _ = root.shape
+
+        # 1. 输入嵌入
+        root_embed = self.root_embedding(root)  # (batch_size, seq_len, hidden_size)
+        rotations_embed = self.rotation_embedding(rotations.view(batch_size, seq_len, -1))  # (batch_size, seq_len, hidden_size)
+
+        # 2. 位置编码
+        root_embed = self.pos_encoder(root_embed)
+        rotations_embed = self.pos_encoder(rotations_embed)
+
+        # 3. 特征拼接
+        x = root_embed + rotations_embed  # (batch_size, seq_len, hidden_size)
+
+        # 4. Transformer 编码器
+        x = self.transformer_encoder(x) # (batch_size, seq_len, hidden_size)
+        x = x[:, -1, :]
+
+        # 5. 输出关节旋转信息
+        rotation_predictions = self.rotation_output_layer(x).view(batch_size, seq_len, self.num_joints - 1, 4)
+        normalized_rotation_predictions = F.normalize(rotation_predictions, p=2, dim=-1)
+
+        # 6.输出根节点坐标
+        root_predictions = self.root_output_layer(x).view(batch_size, seq_len, 3)
+
+        return root_predictions, normalized_rotation_predictions

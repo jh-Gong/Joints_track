@@ -2,20 +2,25 @@ title: "human36m_train_ex"
 kind: "human36m"
 
 opt:
-  criterion: "mae"
+  criterion: "mse"
   mse_smooth_threshold: 400
 
   n_actions_per_epochs: 999
-  seq_len: 10
+  seq_len: 5
   n_joints: 17
   n_epochs: 1000
 
   batch_size: 2056
  
-  lr: 0.005
+  lr: 0.0001
 
   save_3d_png: True
-  save_3d_png_freq: 5
+  save_3d_png_freq: 10
+
+  save_model_graph: False
+
+  save_keypoints_error: False
+  save_keypoints_error_freq: 5
   
 
 model:
@@ -25,7 +30,10 @@ model:
   checkpoint: ""
 
   n_hidden_layer: 96
-  n_layers: 2
+  n_layers: 6
+  n_heads: 8
+
+  dropout: 0.1
 
 dataset:
   kind: "human36m"
@@ -33,10 +41,10 @@ dataset:
   loader_num_workers: 4
   
   train:
-    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_train-linear.h5"
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_train-latest.h5"
 
   val:
-    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-linear.h5"
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-latest.h5"
 
 
 

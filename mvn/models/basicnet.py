@@ -24,5 +24,5 @@ class PositionalEncoding(nn.Module):
         参数:
             x: 输入张量，形状为 [batch_size, seq_len, feature_dim]
         """
-        x = x + self.positional_encoding[:x.size(1)].unsqueeze(0) # 修改这里
+        x = x + self.positional_encoding[:x.size(1)].unsqueeze(0) 
         return self.dropout_layer(x)

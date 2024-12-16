@@ -1,38 +1,32 @@
 import os
-import matplotlib.pyplot as plt
 import numpy as np
-
+import torch
+from tqdm import tqdm
 import plotly.graph_objects as go
 
-def save_3d_png(model, device, dataloader, experiment_dir, name, epoch, scaling_info):
+from mvn.utils.rebuild import rebuild_pose_from_root
+
+def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
+    model.eval()
     batch = next(iter(dataloader))
-    batch_x, batch_y, _ = batch
-    batch_x = batch_x[0]    # size: (seq_len, num_joints * 3)
-    batch_y = batch_y[0]    # size: (seq_len, num_joints * 3)
-    batch_x = batch_x.unsqueeze(0)
-    output = model(batch_x.to(device))  # size: (1, seq_len, num_joints * 3)
-    output = output.squeeze(0)
+    batch_root_x = batch[0]['root'][0:1].to(device)  # (1, seq_len, 3)
+    batch_rotations_x = batch[0]['rotations'][0:1].to(device) # (1, seq_len, 16 * 4)
+    batch_bone_lengths = batch[0]['bone_lengths'][0:1].to(device) # (1, num_joints - 1)
 
-    seq_len, num_joints_times_3 = batch_y.shape
-    num_joints = num_joints_times_3 // 3
+    batch_root_y = batch[1]['root'][0:1].to(device)
+    batch_rotations_y = batch[1]['rotations'][0:1].to(device)
 
-    batch_y = batch_y.view(seq_len, num_joints, 3).detach().cpu().numpy()
-    output = output.view(seq_len, num_joints, 3).detach().cpu().numpy()
+    root_out, rotations_out = model(batch_root_x, batch_rotations_x)
 
-    # 反归一化或反缩放
-    if scaling_info["mode"] == "norm":
-        mean = scaling_info["mean"].reshape(1, num_joints, 3)
-        std = scaling_info["std"].reshape(1, num_joints, 3)
-        batch_y = batch_y * std + mean
-        output = output * std + mean
+    seq_len = root_out.shape[1]
 
-    elif scaling_info["mode"] == "linear":
-        min_val = scaling_info["min"].reshape(1, num_joints, 3)
-        max_val = scaling_info["max"].reshape(1, num_joints, 3)
-        batch_y = (batch_y + 1) * (max_val - min_val) / 2 + min_val
-        output = (output + 1) * (max_val - min_val) / 2 + min_val
+    # 计算预测三维坐标
+    output = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)[0].detach().cpu().numpy()
 
-    # 关节连接方式
+    # 计算gt三维坐标
+    batch_y = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)[0].detach().cpu().numpy()
+
+    # # 关节连接方式
     connections = [
         (0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6),
         (0, 7), (7, 8), (8, 9), (9, 10), (8, 14), (14, 15),
@@ -41,51 +35,6 @@ def save_3d_png(model, device, dataloader, experiment_dir, name, epoch, scaling_
 
     save_dir = os.path.join(experiment_dir, 'pose_3d', f"epoch_{epoch}")
     os.makedirs(save_dir, exist_ok=True)
-
-    # for frame_idx in range(seq_len):
-    #     fig = plt.figure()
-    #     ax = fig.add_subplot(111, projection='3d')
-    #     ax.view_init(elev=90, azim=90)
-
-    #     # ground truth 绿色
-    #     for start, end in connections:
-    #         ax.plot(
-    #             [batch_y[frame_idx, start, 0], batch_y[frame_idx, end, 0]],
-    #             [batch_y[frame_idx, start, 1], batch_y[frame_idx, end, 1]],
-    #             [batch_y[frame_idx, start, 2], batch_y[frame_idx, end, 2]],
-    #             'g-'
-    #         )
-
-    #     # prediction 红色
-    #     for start, end in connections:
-    #         ax.plot(
-    #             [output[frame_idx, start, 0], output[frame_idx, end, 0]],
-    #             [output[frame_idx, start, 1], output[frame_idx, end, 1]],
-    #             [output[frame_idx, start, 2], output[frame_idx, end, 2]],
-    #             'r-'
-    #         )
-
-    #     all_points = np.concatenate((batch_y[frame_idx], output[frame_idx]), axis=0)
-    #     x_min, x_max = all_points[:, 0].min(), all_points[:, 0].max()
-    #     y_min, y_max = all_points[:, 1].min(), all_points[:, 1].max()
-    #     z_min, z_max = all_points[:, 2].min(), all_points[:, 2].max()
-    #     # 空余比例
-    #     margin_ratio = 0.2
-    #     x_margin = (x_max - x_min) * margin_ratio
-    #     y_margin = (y_max - y_min) * margin_ratio
-    #     z_margin = (z_max - z_min) * margin_ratio
-    #     ax.set_xlim([x_min - x_margin, x_max + x_margin])
-    #     ax.set_ylim([y_min - y_margin, y_max + y_margin])
-    #     ax.set_zlim([z_min - z_margin, z_max + z_margin])
-
-    #     ax.set_title(f'Frame {frame_idx}')
-        
-    #     # Save the plot
-    #     file_path = os.path.join(save_dir, f'{name}_frame_{frame_idx}.png')
-    #     plt.savefig(file_path)
-    #     plt.close(fig)
-
-    #     print(f'Saved 3D plot to {file_path}')
 
     file_list = []
 
@@ -178,10 +127,55 @@ def save_3d_png(model, device, dataloader, experiment_dir, name, epoch, scaling_
         file_list.append(relative_path.replace('\\', '/'))
     # 创建 HTML 查看器
     html_content = create_html_viewer().replace('FILE_LIST', str(file_list))
-    main_html_path = os.path.join(save_dir, 'viewer.html')
+    main_html_path = os.path.join(save_dir, f'{name}_viewer.html')
     with open(main_html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
     print(f'Saved main HTML viewer to {main_html_path}')
+
+def get_keypoints_error(model, device, dataloader):
+    model.eval()
+
+    all_errors = []  
+    all_subjects = []
+    all_actions = []
+
+    iterator = tqdm(dataloader, total=len(dataloader), desc=f"Calculating Keypoints Error")
+
+    for batch in iterator:
+        batch_root_x = batch[0]['root'].to(device)
+        batch_rotations_x = batch[0]['rotations'].to(device)
+        batch_bone_lengths = batch[0]['bone_lengths'].to(device)
+
+        batch_root_y = batch[1]['root'].to(device)
+        batch_rotations_y = batch[1]['rotations'].to(device)
+
+        meta_data = batch[2]
+
+        root_out, rotations_out = model(batch_root_x, batch_rotations_x)
+
+        joints_predicted = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)
+        joints_gt = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)
+
+        errors = torch.mean(torch.abs(joints_predicted - joints_gt), dim=(1, 2, 3))  # 对 seq_len, num_joints, 3 三个维度求平均
+
+        all_errors.append(errors.detach().cpu().numpy())
+        all_subjects.extend(meta_data[:, 0].cpu().numpy())
+        all_actions.extend(meta_data[:, 1].cpu().numpy())
+
+    # 将所有批次的误差合并为一个 NumPy 数组
+    all_errors = np.concatenate(all_errors)
+
+    # 使用 Pandas DataFrame 来组织数据
+    import pandas as pd
+    df = pd.DataFrame({'subject': all_subjects, 'action': all_actions, 'error': all_errors})
+
+    # 使用 groupby 计算每个 subject 和 action 的平均误差
+    error_dict = df.groupby(['subject', 'action'])['error'].mean().to_dict()
+
+    return error_dict
+
+        
+
 
 def create_html_viewer():
     html_content = """
