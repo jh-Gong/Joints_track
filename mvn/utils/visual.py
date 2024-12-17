@@ -1,4 +1,5 @@
 import os
+import pandas as pd
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -156,25 +157,44 @@ def get_keypoints_error(model, device, dataloader):
         joints_predicted = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)
         joints_gt = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)
 
-        errors = torch.mean(torch.abs(joints_predicted - joints_gt), dim=(1, 2, 3))  # 对 seq_len, num_joints, 3 三个维度求平均
+        errors = torch.mean(torch.abs(joints_predicted - joints_gt), dim=(1, 2, 3))  
 
         all_errors.append(errors.detach().cpu().numpy())
-        all_subjects.extend(meta_data[:, 0].cpu().numpy())
-        all_actions.extend(meta_data[:, 1].cpu().numpy())
+        all_subjects.extend(meta_data[0])  
+        all_actions.extend(meta_data[1])
 
     # 将所有批次的误差合并为一个 NumPy 数组
     all_errors = np.concatenate(all_errors)
-
     # 使用 Pandas DataFrame 来组织数据
-    import pandas as pd
     df = pd.DataFrame({'subject': all_subjects, 'action': all_actions, 'error': all_errors})
 
-    # 使用 groupby 计算每个 subject 和 action 的平均误差
-    error_dict = df.groupby(['subject', 'action'])['error'].mean().to_dict()
+
+    # 1. 计算每个 subject 和 action 的平均损失以及每个 action 的数量
+    error_df = df.groupby(['subject', 'action'])['error'].agg(['mean', 'count']).reset_index()
+
+    # 2. 计算每个 subject 的加权平均损失
+    subject_avg = {}
+    for subject in error_df['subject'].unique():
+        subject_data = error_df[error_df['subject'] == subject]
+        subject_avg[subject] = np.average(subject_data['mean'], weights=subject_data['count'])
+
+    # 3. 将每个 subject 的平均损失添加到 error_dict 中
+    error_dict = error_df.groupby(['subject', 'action'])['mean'].mean().unstack(0).to_dict()
+    for subject, avg in subject_avg.items():
+        error_dict[subject]['average'] = avg
+
+    # 4. 计算所有 action 的加权平均损失以及总体加权平均损失
+    all_actions_avg = {}
+    for action in error_df['action'].unique():
+        action_data = error_df[error_df['action'] == action]
+        all_actions_avg[action] = np.average(action_data['mean'], weights=action_data['count'])
+
+    overall_avg = np.average(error_df['mean'], weights=error_df['count'])
+    all_actions_avg['overall_average'] = overall_avg
+
+    error_dict['average'] = all_actions_avg
 
     return error_dict
-
-        
 
 
 def create_html_viewer():

@@ -1,0 +1,48 @@
+title: "human36m_train_ex"
+kind: "human36m"
+
+opt:
+  criterion: "mse"
+  mse_smooth_threshold: 400
+
+  n_actions_per_epochs: 999
+  seq_len: 5
+  n_joints: 17
+  n_epochs: 1000
+
+  batch_size: 1024
+ 
+  lr: 0.0001
+
+  save_3d_png: False
+  save_3d_png_freq: 10
+
+  save_keypoints_error: True
+  save_keypoints_error_freq: 5
+  
+
+model:
+  name: "transformer"
+
+  init_weights: True
+  checkpoint: "G:\\Projects\\Joint_track\\logs\\human36m_train_ex_TransformerModel@12-16-01-50-24.2024\\checkpoints\\0659\\weights.pth"
+
+  n_hidden_layer: 96
+  n_layers: 6
+  n_heads: 8
+
+  dropout: 0.1
+
+dataset:
+  kind: "human36m"
+
+  loader_num_workers: 4
+  
+  train:
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_train-latest.h5"
+
+  val:
+    data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-latest.h5"
+
+
+

@@ -198,7 +198,7 @@ def main(args):
 
     # datasets
     print("Loading data...")
-    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=True if not args.eval else False) 
+    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=True if not args.eval or args.eval_dataset=='train' else False) 
 
     # experiment
     experiment_dir, writer = setup_experiment(config, type(model).__name__, is_train=not args.eval)
@@ -218,9 +218,15 @@ def main(args):
 
     else:
         if args.eval_dataset == 'train':
-            one_epoch(model, criterion, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            loss_dict = one_epoch(model, criterion, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
         else:
-            one_epoch(model, criterion, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            loss_dict = one_epoch(model, criterion, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
+
+        checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "average")
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        if loss_dict is not None:
+            with open(os.path.join(checkpoint_dir, "loss.json"), 'w') as f:
+                json.dump(loss_dict, f, indent=4)
 
 
 
@@ -229,3 +235,4 @@ if __name__ == '__main__':
     args = cfg.parse_args(work_directory)
     print("args: {}".format(args))
     main(args)
+    print("Done.")
