@@ -10,7 +10,7 @@ from torch import optim
 from tensorboardX import SummaryWriter
 
 from mvn.utils import cfg
-from mvn.models.loss import KeypointsMSELoss, KeypointsMSESmoothLoss, KeypointsMAELoss
+from mvn.models.loss import KeypointsMSELoss, KeypointsMSESmoothLoss, KeypointsMAELoss, QuaternionAngleLoss, QuaternionChordalLoss
 from mvn.models.model import LstmModel, TransformerModel
 from mvn.utils.data import setup_dataloaders
 import mvn.utils.misc as misc
@@ -65,13 +65,14 @@ def setup_experiment(config, model_name, is_train=True):
     # 返回实验目录路径和SummaryWriter对象
     return experiment_dir, writer
 
-def one_epoch(model, criterion, opt, config, dataloader, device, epoch, is_train=True, experiment_dir=None, writer=None):
+def one_epoch(model, criterion, criterion_rotations, opt, config, dataloader, device, epoch, is_train=True, experiment_dir=None, writer=None):
     """
     训练或验证模型一个epoch。
 
     参数:
     - model: 使用的模型。
     - criterion: 损失函数。
+    - criterion_rotations: 旋转损失函数。
     - opt: 优化器。
     - config: 配置对象，包含模型和训练配置。
     - dataloader: 数据加载器。
@@ -115,8 +116,8 @@ def one_epoch(model, criterion, opt, config, dataloader, device, epoch, is_train
                 # 前向传播和反向梯度计算
                 root_out, rotations_out = model(batch_root_x, batch_rotations_x) 
                 root_loss = criterion(root_out, batch_root_y)
-                rotations_loss = criterion(rotations_out, batch_rotations_y)
-                loss = root_loss + 50000 * rotations_loss
+                rotations_loss = criterion_rotations(rotations_out, batch_rotations_y)
+                loss = root_loss + 10000 * rotations_loss
                 if is_train:
                     opt.zero_grad()
                     loss.backward()
@@ -189,6 +190,8 @@ def main(args):
     else:
         criterion = criterion_class()
 
+    criterion_rotations = QuaternionAngleLoss()
+
     # optimizer
     opt = None
     if not args.eval:
@@ -206,8 +209,8 @@ def main(args):
     if not args.eval:
         # train loop
         for epoch in range(config.opt.n_epochs):
-            one_epoch(model, criterion, opt, config, train_dataloader, device, epoch, is_train=True, experiment_dir=experiment_dir, writer=writer)
-            loss_dict = one_epoch(model, criterion, opt, config, val_dataloader, device, epoch, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            one_epoch(model, criterion, criterion_rotations, opt, config, train_dataloader, device, epoch, is_train=True, experiment_dir=experiment_dir, writer=writer)
+            loss_dict = one_epoch(model, criterion, criterion_rotations, opt, config, val_dataloader, device, epoch, is_train=False, experiment_dir=experiment_dir, writer=writer)
             checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "{:04}".format(epoch))
             os.makedirs(checkpoint_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "weights.pth"))
@@ -218,9 +221,9 @@ def main(args):
 
     else:
         if args.eval_dataset == 'train':
-            loss_dict = one_epoch(model, criterion, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            loss_dict = one_epoch(model, criterion, criterion_rotations, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
         else:
-            loss_dict = one_epoch(model, criterion, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
+            loss_dict = one_epoch(model, criterion, criterion_rotations, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
 
         checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "average")
         os.makedirs(checkpoint_dir, exist_ok=True)

@@ -1,3 +1,9 @@
+'''
+Date: 2024-11-27 13:16:25
+LastEditors: gjhhh 1377019164@qq.com
+LastEditTime: 2024-12-17 23:12:25
+Description: example
+'''
 import torch
 from torch import nn
 
@@ -38,4 +44,25 @@ class KeypointsMAELoss(nn.Module):
         dimension = keypoints_pred.shape[-1]
         loss = torch.sum(torch.abs(keypoints_gt - keypoints_pred) * keypoints_binary_validity)
         loss = loss / (dimension * max(1, torch.sum(keypoints_binary_validity).item()))
+        return loss
+    
+class QuaternionAngleLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, quat_pred, quat_gt):
+        dot_product = torch.sum(quat_pred * quat_gt, dim=-1)
+        angle_diff = torch.acos(torch.clamp(dot_product, -1 + 1e-7, 1 - 1e-7)) * 2
+
+        loss = torch.mean(angle_diff)
+        return loss
+    
+class QuaternionChordalLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, quat_pred, quat_gt):
+        loss = torch.min(torch.norm(quat_pred - quat_gt, dim=-1),
+                         torch.norm(quat_pred + quat_gt, dim=-1)).mean()
+
         return loss

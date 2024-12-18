@@ -97,27 +97,29 @@ def setup_human36m_dataloaders(config: edict, is_train: bool):
         # 加载训练数据
         train_data = load_hdf5_data(config.dataset.train.data_path)
         # 创建训练数据集对象
-        train_dataset = Human36MMultiJointsDataset(train_data, seq_len=config.opt.seq_len)
+        train_dataset = Human36MMultiJointsDataset(train_data, seq_len=config.opt.seq_len, preload=False)
 
         # 创建训练数据加载器
         train_dataloader = DataLoader(
             train_dataset,
             batch_size=config.opt.batch_size,
             shuffle=True,
-            num_workers=config.dataset.loader_num_workers
+            num_workers=config.dataset.loader_num_workers,
+            pin_memory=True
         )
 
     # 加载验证数据
     val_data = load_hdf5_data(config.dataset.val.data_path)
     # 创建验证数据集对象
-    val_dataset = Human36MMultiJointsDataset(val_data, seq_len=config.opt.seq_len)
+    val_dataset = Human36MMultiJointsDataset(val_data, seq_len=config.opt.seq_len, preload=False)
 
     # 创建验证数据加载器
     val_dataloader = DataLoader(
         val_dataset,
         batch_size=config.opt.batch_size,
         shuffle=False,
-        num_workers=config.dataset.loader_num_workers
+        num_workers=config.dataset.loader_num_workers,
+        pin_memory=True
     )
 
     # 返回训练和验证数据加载器
