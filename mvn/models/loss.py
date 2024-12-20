@@ -2,7 +2,7 @@
 Date: 2024-11-27 13:16:25
 LastEditors: gjhhh 1377019164@qq.com
 LastEditTime: 2024-12-17 23:12:25
-Description: example
+Description: 损失函数
 '''
 import torch
 from torch import nn

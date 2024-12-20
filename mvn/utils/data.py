@@ -12,7 +12,7 @@ from easydict import EasyDict as edict
 import h5py
 from tqdm import tqdm
 
-from mvn.datasets.human36m import Human36MMultiJointsDataset
+from mvn.datasets.dataset import Human36MMultiJointsDataset
 
 def load_hdf5_data(data_path):
     hdf5_data = {}

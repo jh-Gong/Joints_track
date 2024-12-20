@@ -6,13 +6,13 @@ opt:
   mse_smooth_threshold: 400
 
   n_actions_per_epochs: 999
-  seq_len: 5
+  seq_len: 15
   n_joints: 17
   n_epochs: 9999
 
-  batch_size: 2048
+  batch_size: 4096
  
-  lr: 0.0001
+  lr: 0.0003
 
   save_3d_png: True
   save_3d_png_freq: 20
@@ -28,8 +28,8 @@ model:
   checkpoint: "G:\\Projects\\Joint_track\\logs\\human36m_train_ex_TransformerModel@12-16-01-50-24.2024\\checkpoints\\0659\\weights.pth"
 
   n_hidden_layer: 96
-  n_layers: 2
-  n_heads: 6
+  n_layers: 4
+  n_heads: 8
 
   dropout: 0.1
 
