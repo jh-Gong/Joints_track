@@ -1,7 +1,7 @@
 '''
 Date: 2024-12-19 13:19:52
 LastEditors: gjhhh 1377019164@qq.com
-LastEditTime: 2024-12-20 13:22:32
+LastEditTime: 2024-12-24 00:08:59
 Description: 评估脚本（封装前测试）
 '''
 
@@ -68,7 +68,7 @@ def main(config_path, data_path, model_path):
     # 读取数据
     pred_data, gt_data = get_data_from_csv(data_path)
 
-    pred_data = gt_data
+    # pred_data = gt_data
 
     frames = pred_data.shape[0]
     seq_len = config.opt.seq_len
@@ -106,9 +106,9 @@ def main(config_path, data_path, model_path):
 
         # 畸形检测
         flag_anomaly = False
-        if len(all_root_outs) > 0 and anomaly_count < 3:
+        if len(all_root_outs) > 0 and anomaly_count < 10:
             distance = torch.norm(root_out[-1, -2, :] - all_root_outs[-1][-1, -1, :])
-            if distance > 220:
+            if distance > 100:
                 print(f"Detected anomaly at frame {i + seq_len - 1}, using previous frame's result.")
                 flag_anomaly = True
         if flag_anomaly:
@@ -236,12 +236,12 @@ def visualize_3d_motion(data, title="3D Motion Visualization"):
 
 
 if __name__ == '__main__':
-    data_path = r"G:\Projects\Joint_track\eval_data\data_no_wrong.csv"
+    data_path = r"G:\Projects\Joint_track\eval_data\data_with_wrong.csv"
 
     # config_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-17-23-12-47.2024\config.yaml"
     # model_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-17-23-12-47.2024\checkpoints\1125\weights.pth"
 
     config_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-19-17-35-22.2024\config.yaml"
-    model_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-19-17-35-22.2024\checkpoints\0330\weights.pth"
+    model_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-19-17-35-22.2024\checkpoints\1320\weights.pth"
     main(config_path, data_path, model_path)
     print("Done")
