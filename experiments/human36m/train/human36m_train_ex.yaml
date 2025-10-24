@@ -19,6 +19,9 @@ opt:
 
   save_keypoints_error: True
   save_keypoints_error_freq: 5
+
+  rotation_loss_weight: 10000
+  anomaly_detection_threshold: 100
   
 
 model:
