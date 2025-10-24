@@ -12,12 +12,12 @@ def rebuild_pose_from_root(root: torch.Tensor, rotations: torch.Tensor, bone_len
     根据根节点位置、旋转和骨骼长度重建姿态。
 
     Args:
-        root: torch.Tensor, 形状为 (batch_size, seq_len, 3)，表示根节点位置。
-        rotations: torch.Tensor, 形状为 (batch_size, seq_len, 16*4)，表示每个关节的旋转四元数。
-        bone_lengths: torch.Tensor, 形状为 (batch_size, 16)，表示每个骨骼的长度。
+        root (torch.Tensor): 根节点位置，形状为 `(batch_size, seq_len, 3)`。
+        rotations (torch.Tensor): 每个关节的旋转四元数，形状为 `(batch_size, seq_len, 16*4)`。
+        bone_lengths (torch.Tensor): 每个骨骼的长度，形状为 `(batch_size, 16)`。
 
     Returns:
-        torch.Tensor, 形状为 (batch_size, seq_len, 17, 3)，表示重建后的关节位置。
+        torch.Tensor: 重建后的关节位置，形状为 `(batch_size, seq_len, 17, 3)`。
     """
     parent_map = {
         1: 0, 2: 1, 3: 2, 4: 0, 5: 4, 6: 5,
@@ -41,11 +41,11 @@ def rotate_vector_by_quaternion_vectorized(vector: torch.Tensor, quaternion: tor
     批量旋转向量。
 
     Args:
-        vector: torch.Tensor, 形状为 (..., 3)，表示待旋转的向量。
-        quaternion: torch.Tensor, 形状为 (..., 4)，表示旋转四元数。
+        vector (torch.Tensor): 待旋转的向量，形状为 `(..., 3)`。
+        quaternion (torch.Tensor): 旋转四元数，形状为 `(..., 4)`。
 
     Returns:
-        torch.Tensor, 形状为 (..., 3)，表示旋转后的向量。
+        torch.Tensor: 旋转后的向量，形状为 `(..., 3)`。
     """
     # 将向量转换为标量部分为 0 的四元数。
     vector_quaternion = torch.cat([torch.zeros_like(vector[..., :1]), vector], dim=-1)
@@ -64,11 +64,11 @@ def quaternion_multiply_vectorized(q1: torch.Tensor, q2: torch.Tensor) -> torch.
     批量执行四元数乘法。
 
     Args:
-        q1: torch.Tensor, 形状为 (..., 4)，表示第一个四元数。
-        q2: torch.Tensor, 形状为 (..., 4)，表示第二个四元数。
+        q1 (torch.Tensor): 第一个四元数，形状为 `(..., 4)`。
+        q2 (torch.Tensor): 第二个四元数，形状为 `(..., 4)`。
 
     Returns:
-        torch.Tensor, 形状为 (..., 4)，表示四元数乘法的结果。
+        torch.Tensor: 四元数乘法的结果，形状为 `(..., 4)`。
     """
     w1, x1, y1, z1 = q1.unbind(-1)
     w2, x2, y2, z2 = q2.unbind(-1)
@@ -85,13 +85,13 @@ def calculate_joint_positions_vectorized(root_position: torch.Tensor, rotations:
     向量化计算基于根节点位置、旋转和骨骼长度的关节三维坐标。
 
     Args:
-        root_position: torch.Tensor, 形状为 (batch_size, seq_len, 3)，表示根节点位置。
-        rotations: torch.Tensor, 形状为 (batch_size, seq_len, 16, 4)，表示每个关节的旋转四元数。
-        bone_lengths: torch.Tensor, 形状为 (batch_size, 1, 16)，表示每个骨骼的长度。
-        parent_map: dict, 将关节索引映射到其父关节索引的字典。
+        root_position (torch.Tensor): 根节点位置，形状为 `(batch_size, seq_len, 3)`。
+        rotations (torch.Tensor): 每个关节的旋转四元数，形状为 `(batch_size, seq_len, 16, 4)`。
+        bone_lengths (torch.Tensor): 每个骨骼的长度，形状为 `(batch_size, 1, 16)`。
+        parent_map (dict): 将关节索引映射到其父关节索引的字典。
 
     Returns:
-        torch.Tensor, 形状为 (batch_size, seq_len, 17, 3)，表示关节的三维坐标。
+        torch.Tensor: 关节的三维坐标，形状为 `(batch_size, seq_len, 17, 3)`。
     """
     batch_size, seq_len, _ = root_position.shape
     device = root_position.device

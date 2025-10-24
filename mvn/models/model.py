@@ -12,13 +12,12 @@ from .basicnet import PositionalEncoding
 
 class LstmModel(nn.Module):
     """
-        使用LSTM进行原本时间序列与未来的预测
+    使用LSTM进行原本时间序列与未来的预测。
 
-        参数：
-        - feature_dimension: 输入的维度
-        - hidden_size: 隐藏单元数
-        - output_size: 输出维度
-        - num_layers:  LSTM层的层数
+    Args:
+        feature_dimension (int, optional): 输入的维度。默认为51。
+        hidden_size (int, optional): 隐藏单元数。默认为96。
+        num_layers (int, optional): LSTM层的层数。默认为2。
     """
     def __init__(self, feature_dimension=51, hidden_size=96, num_layers=2):
         super().__init__()
@@ -26,7 +25,16 @@ class LstmModel(nn.Module):
         self.lstm = nn.LSTM(feature_dimension, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, feature_dimension)
 
-    def forward(self, x): 
+    def forward(self, x):
+        """
+        前向传播。
+
+        Args:
+            x (torch.Tensor): 输入张量，形状为 `(batch_size, seq_len, feature_dimension)`。
+
+        Returns:
+            torch.Tensor: 输出张量，形状为 `(batch_size, seq_len, feature_dimension)`。
+        """
         x, _ = self.lstm(x)          # x is input, size: (batch, seq_len, feature_dimension)
         b, s, h = x.shape
         # 处理每一个时间步输出
@@ -36,6 +44,17 @@ class LstmModel(nn.Module):
         return x
 
 class TransformerModel(nn.Module):
+    """
+    基于Transformer的模型，用于预测人体姿态。
+
+    Args:
+        seq_len (int, optional): 序列长度。默认为5。
+        num_joints (int, optional): 关节数量。默认为17。
+        hidden_size (int, optional): 隐藏层大小。默认为96。
+        num_layers (int, optional): Transformer编码器层数。默认为2。
+        num_heads (int, optional): 多头注意力机制的头数。默认为8。
+        dropout_probability (float, optional): dropout概率。默认为0.1。
+    """
     def __init__(self, seq_len = 5, num_joints=17, hidden_size=96, num_layers=2, num_heads=8, dropout_probability=0.1):
         super().__init__()
 
@@ -52,11 +71,23 @@ class TransformerModel(nn.Module):
         encoder_layers = nn.TransformerEncoderLayer(hidden_size, nhead=num_heads, dim_feedforward=2048, dropout=dropout_probability, batch_first=True)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers)
 
-        # 输出层 
+        # 输出层
         self.root_output_layer = nn.Linear(hidden_size, 3 * seq_len)
         self.rotation_output_layer = nn.Linear(hidden_size, (num_joints - 1) * 4 * seq_len)
 
     def forward(self, root, rotations):
+        """
+        前向传播。
+
+        Args:
+            root (torch.Tensor): 根节点位置，形状为 `(batch_size, seq_len, 3)`。
+            rotations (torch.Tensor): 关节旋转，形状为 `(batch_size, seq_len, num_joints - 1, 4)`。
+
+        Returns:
+            tuple:
+                - torch.Tensor: 预测的根节点位置，形状为 `(batch_size, seq_len, 3)`。
+                - torch.Tensor: 预测的关节旋转，形状为 `(batch_size, seq_len, num_joints - 1, 4)`。
+        """
         batch_size, seq_len, _ = root.shape
 
         # 1. 输入嵌入
