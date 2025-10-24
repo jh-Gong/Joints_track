@@ -1,4 +1,4 @@
-title: "human36m_train_ex"
+title: "human36m_stgcn_transformer_eval"
 kind: "human36m"
 
 opt:
@@ -6,11 +6,11 @@ opt:
   mse_smooth_threshold: 400
 
   n_actions_per_epochs: 999
-  seq_len: 5
+  seq_len: 15
   n_joints: 17
   n_epochs: 1000
 
-  batch_size: 1024
+  batch_size: 2048
  
   lr: 0.0001
 
@@ -25,15 +25,17 @@ opt:
   
 
 model:
-  name: "transformer"
+  name: "stgcn_transformer" # <--- 更改模型名称
 
   init_weights: True
-  checkpoint: "G:\\Projects\\Joint_track\\logs\\human36m_train_ex_TransformerModel@12-16-01-50-24.2024\\checkpoints\\0659\\weights.pth"
+  checkpoint: "/path/to/your/stgcn_transformer_model.pth" # 请记得更新为实际的模型路径
 
-  n_hidden_layer: 96
-  n_layers: 6
+  # ST-GCN和Transformer的特定超参数
+  stgcn_hidden_size: 64
+  transformer_hidden_size: 128
+
+  n_layers: 4
   n_heads: 8
-
   dropout: 0.1
 
 dataset:
@@ -46,6 +48,3 @@ dataset:
 
   val:
     data_path: "G:\\Projects\\Joint_track\\mvn\\datasets\\human36m\\results\\data_validation-latest.h5"
-
-
-
