@@ -1,10 +1,12 @@
+# -*- coding: utf-8 -*-
 '''
 Date: 2024-12-19 13:19:52
 LastEditors: gjhhh 1377019164@qq.com
 LastEditTime: 2024-12-24 00:08:59
-Description: 评估脚本（封装前测试）
+Description: 评估脚本
 '''
-
+import os
+import argparse
 import pandas as pd
 import numpy as np
 import torch
@@ -12,11 +14,11 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 from mvn.utils import cfg
-from mvn.models.model import LstmModel, TransformerModel
+from mvn.models.builder import build_model
 from mvn.datasets.human36m.utils.process import calculate_bone_data
 from mvn.utils.rebuild import rebuild_pose_from_root
 
-def get_data_from_csv(data_path):
+def get_data_from_csv(data_path: str) -> tuple[np.ndarray, np.ndarray]:
     """
     从 CSV 文件中读取数据，并将其组织成两个形状为 [frame, 17, 3] 的 NumPy 数组。
 
@@ -41,42 +43,25 @@ def get_data_from_csv(data_path):
 
     return pred_data, gt_data
 
-def main(config_path, data_path, model_path):
+def main(args: argparse.Namespace):
     """
     评估模型。
 
     Args:
-        config_path (str): 配置文件路径。
-        data_path (str): 数据文件路径。
-        model_path (str): 模型文件路径。
+        args (argparse.Namespace): 包含所有命令行参数的对象。
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    config = cfg.load_config(config_path)
+    config = cfg.load_config(args.config)
+
+    # 更新配置中的模型路径
+    config.model.checkpoint = args.model_path
 
     # model
-    model = {
-        "lstm": LstmModel,
-        "transformer": TransformerModel
-    }[config.model.name]
-
-    if config.model.name == "transformer":
-        model = model(
-            seq_len=config.opt.seq_len,
-            num_joints=config.opt.n_joints,
-            hidden_size=config.model.n_hidden_layer,
-            num_layers=config.model.n_layers,
-            num_heads=config.model.n_heads,
-            dropout_probability=config.model.dropout
-        ).to(device)
-    else:
-        raise NotImplementedError("Model not implemented")
-
-    model.load_state_dict(torch.load(model_path, weights_only=True))
+    model = build_model(config, device)
 
     # 读取数据
-    pred_data, gt_data = get_data_from_csv(data_path)
-
-    # pred_data = gt_data
+    print(f"从 '{args.data_path}' 加载评估数据...")
+    pred_data, gt_data = get_data_from_csv(args.data_path)
 
     frames = pred_data.shape[0]
     seq_len = config.opt.seq_len
@@ -116,8 +101,8 @@ def main(config_path, data_path, model_path):
         flag_anomaly = False
         if len(all_root_outs) > 0 and anomaly_count < 10:
             distance = torch.norm(root_out[-1, -2, :] - all_root_outs[-1][-1, -1, :])
-            if distance > 100:
-                print(f"Detected anomaly at frame {i + seq_len - 1}, using previous frame's result.")
+            if distance > config.opt.anomaly_detection_threshold:
+                print(f"在帧 {i + seq_len - 1} 检测到异常，使用前一帧的结果进行修正。")
                 flag_anomaly = True
         if flag_anomaly:
             pred_root =  all_root_outs[-1][:, 0:, :]
@@ -155,10 +140,12 @@ def main(config_path, data_path, model_path):
     # 计算所有帧，所有序列和所有关节的平均误差
     mpjpe = error_per_joint.mean()
 
-    print(f"Mean Per Joint Position Error: {mpjpe.item()}")
+    print(f"Mean Per Joint Position Error (MPJPE): {mpjpe.item():.4f}")
 
-    joints_predicted = joints_predicted.detach().cpu().numpy()
-    visualize_3d_motion(joints_predicted)
+    if args.visualize:
+        print("启动3D运动可视化...")
+        visualize_3d_motion(joints_predicted)
+
 def visualize_3d_motion(data, title="3D Motion Visualization"):
     """
     可视化形状为 (frames, 17, 3) 的 3D 动作数据。
@@ -241,14 +228,20 @@ def visualize_3d_motion(data, title="3D Motion Visualization"):
 
     plt.show()
 
+def parse_args():
+    """
+    解析命令行参数。
+    """
+    parser = argparse.ArgumentParser(description="模型评估脚本")
+    parser.add_argument("--config", type=str, required=True, help="评估配置文件的路径")
+    parser.add_argument("--model_path", type=str, required=True, help="预训练模型权重的路径 (.pth 文件)")
+    parser.add_argument("--data_path", type=str, required=True, help="用于评估的CSV数据文件路径")
+    parser.add_argument('--visualize', action='store_true', help="如果设置，则在评估后启动3D可视化")
+
+    return parser.parse_args()
 
 if __name__ == '__main__':
-    data_path = r"G:\Projects\Joint_track\eval_data\data_with_wrong.csv"
+    args = parse_args()
+    main(args)
+    print("评估完成。")
 
-    # config_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-17-23-12-47.2024\config.yaml"
-    # model_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-17-23-12-47.2024\checkpoints\1125\weights.pth"
-
-    config_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-19-17-35-22.2024\config.yaml"
-    model_path = r"G:\Projects\Joint_track\logs\human36m_train_ex_TransformerModel@12-19-17-35-22.2024\checkpoints\1320\weights.pth"
-    main(config_path, data_path, model_path)
-    print("Done")

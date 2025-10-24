@@ -3,7 +3,7 @@ from easydict import EasyDict as edict
 import argparse
 import os
 
-def load_config(path):
+def load_config(path: str) -> edict:
     """
     加载YAML配置文件。
 
@@ -11,14 +11,14 @@ def load_config(path):
         path (str): YAML配置文件的路径。
 
     Returns:
-        easydict.EasyDict: 包含配置信息的EasyDict对象。
+        edict: 包含配置信息的EasyDict对象。
     """
     with open(path) as f:
         config = edict(yaml.safe_load(f))
 
     return config
 
-def parse_args(work_directory: str):
+def parse_args(work_directory: str) -> argparse.Namespace:
     """
     解析命令行参数。
 

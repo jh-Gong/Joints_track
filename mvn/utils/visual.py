@@ -2,43 +2,54 @@ import os
 import pandas as pd
 import numpy as np
 import torch
+from torch.nn import Module
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 import plotly.graph_objects as go
+from typing import Dict, Union
 
 from mvn.utils.rebuild import rebuild_pose_from_root
 
-def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
+def save_3d_png(
+    model: Module,
+    device: torch.device,
+    dataloader: DataLoader,
+    experiment_dir: str,
+    name: str,
+    epoch: int
+):
     """
-    保存3D姿态的可视化结果。
+    保存3D姿态的可视化结果为交互式HTML文件。
 
     Args:
-        model (torch.nn.Module): 训练好的模型。
-        device (torch.device): 设备，'cuda' 或 'cpu'。
-        dataloader (torch.utils.data.DataLoader): 数据加载器。
+        model (Module): 训练好的模型。
+        device (torch.device): 'cuda' 或 'cpu'。
+        dataloader (DataLoader): 数据加载器。
         experiment_dir (str): 实验目录。
-        name (str): 保存文件的前缀名。
+        name (str): 保存文件的前缀名 (例如, 'train' 或 'val')。
         epoch (int): 当前的epoch。
     """
     model.eval()
-    batch = next(iter(dataloader))
-    batch_root_x = batch[0]['root'][0:1].to(device)  # (1, seq_len, 3)
-    batch_rotations_x = batch[0]['rotations'][0:1].to(device) # (1, seq_len, 16 * 4)
-    batch_bone_lengths = batch[0]['bone_lengths'][0:1].to(device) # (1, num_joints - 1)
+    try:
+        batch = next(iter(dataloader))
+    except StopIteration:
+        print("数据加载器为空，无法生成可视化。")
+        return
 
+    batch_root_x = batch[0]['root'][0:1].to(device)
+    batch_rotations_x = batch[0]['rotations'][0:1].to(device)
+    batch_bone_lengths = batch[0]['bone_lengths'][0:1].to(device)
     batch_root_y = batch[1]['root'][0:1].to(device)
     batch_rotations_y = batch[1]['rotations'][0:1].to(device)
 
-    root_out, rotations_out = model(batch_root_x, batch_rotations_x)
+    with torch.no_grad():
+        root_out, rotations_out = model(batch_root_x, batch_rotations_x)
 
     seq_len = root_out.shape[1]
 
-    # 计算预测三维坐标
-    output = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)[0].detach().cpu().numpy()
+    output = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)[0].cpu().numpy()
+    batch_y = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)[0].cpu().numpy()
 
-    # 计算gt三维坐标
-    batch_y = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)[0].detach().cpu().numpy()
-
-    # # 关节连接方式
     connections = [
         (0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6),
         (0, 7), (7, 8), (8, 9), (9, 10), (8, 14), (14, 15),
@@ -49,259 +60,172 @@ def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
     os.makedirs(save_dir, exist_ok=True)
 
     file_list = []
-
-    # 遍历每一帧
     for frame_idx in range(seq_len):
-
-        # 创建散点图数据
         scatter_gt = go.Scatter3d(
-            x=batch_y[frame_idx, :, 0],
-            y=batch_y[frame_idx, :, 1],
-            z=batch_y[frame_idx, :, 2],
-            mode='markers',
-            marker=dict(size=5, color='green'),
-            name='Ground Truth'
+            x=batch_y[frame_idx, :, 0], y=batch_y[frame_idx, :, 1], z=batch_y[frame_idx, :, 2],
+            mode='markers', marker=dict(size=5, color='green'), name='Ground Truth'
         )
-
         scatter_pred = go.Scatter3d(
-            x=output[frame_idx, :, 0],
-            y=output[frame_idx, :, 1],
-            z=output[frame_idx, :, 2],
-            mode='markers',
-            marker=dict(size=5, color='red'),
-            name='Prediction'
+            x=output[frame_idx, :, 0], y=output[frame_idx, :, 1], z=output[frame_idx, :, 2],
+            mode='markers', marker=dict(size=5, color='red'), name='Prediction'
         )
 
-        # 创建线段图数据（用于连接关节）
-        lines_gt = []
-        lines_pred = []
-        # 用于连线的标签列表
-        lines_labels_gt = []
-        lines_labels_pred = []
-        for idx, (start, end) in enumerate(connections):
-            lines_gt.append(go.Scatter3d(
+        lines = []
+        for start, end in connections:
+            lines.append(go.Scatter3d(
                 x=[batch_y[frame_idx, start, 0], batch_y[frame_idx, end, 0]],
                 y=[batch_y[frame_idx, start, 1], batch_y[frame_idx, end, 1]],
                 z=[batch_y[frame_idx, start, 2], batch_y[frame_idx, end, 2]],
-                mode='lines+text',
-                line=dict(color='green', width=2),
-                text=[f'{start}', f'{end}'],
-                textposition="top center",
-                showlegend=False,
-                textfont=dict(color='green')
+                mode='lines', line=dict(color='green', width=2), showlegend=False
             ))
-            lines_labels_gt.append(f'{start}-{end}') # 添加连线标签
-
-            lines_pred.append(go.Scatter3d(
+            lines.append(go.Scatter3d(
                 x=[output[frame_idx, start, 0], output[frame_idx, end, 0]],
                 y=[output[frame_idx, start, 1], output[frame_idx, end, 1]],
                 z=[output[frame_idx, start, 2], output[frame_idx, end, 2]],
-                mode='lines+text',
-                line=dict(color='red', width=2),
-                text=[f'{start}', f'{end}'],
-                textposition="top center",
-                showlegend=False,
-                textfont=dict(color='red')
+                mode='lines', line=dict(color='red', width=2), showlegend=False
             ))
-            lines_labels_pred.append(f'{start}-{end}')
 
-        # 合并数据
-        data = [scatter_gt, scatter_pred] + lines_gt + lines_pred
-
-        # 设置布局
         all_points = np.concatenate((batch_y[frame_idx], output[frame_idx]), axis=0)
-        x_min, x_max = all_points[:, 0].min(), all_points[:, 0].max()
-        y_min, y_max = all_points[:, 1].min(), all_points[:, 1].max()
-        z_min, z_max = all_points[:, 2].min(), all_points[:, 2].max()
-        margin_ratio = 0.2
-        x_margin = (x_max - x_min) * margin_ratio
-        y_margin = (y_max - y_min) * margin_ratio
-        z_margin = (z_max - z_min) * margin_ratio
+        min_vals, max_vals = all_points.min(axis=0), all_points.max(axis=0)
+        center = (min_vals + max_vals) / 2
+        max_range = (max_vals - min_vals).max() * 0.6
 
         layout = go.Layout(
             title=f'Frame {frame_idx}',
             scene=dict(
-                xaxis=dict(range=[x_min - x_margin, x_max + x_margin]),
-                yaxis=dict(range=[y_min - y_margin, y_max + y_margin]),
-                zaxis=dict(range=[z_min - z_margin, z_max + z_margin]),
-                aspectmode='cube'  # 保持 xyz 轴比例一致
+                xaxis=dict(range=[center[0] - max_range, center[0] + max_range]),
+                yaxis=dict(range=[center[1] - max_range, center[1] + max_range]),
+                zaxis=dict(range=[center[2] - max_range, center[2] + max_range]),
+                aspectmode='cube'
             )
         )
 
-        # 创建图形并保存为 HTML
-        fig = go.Figure(data=data, layout=layout)
+        fig = go.Figure(data=[scatter_gt, scatter_pred] + lines, layout=layout)
         file_path = os.path.join(save_dir, f'{name}_frame_{frame_idx}.html')
         fig.write_html(file_path)
-        print(f'Saved 3D interactive plot to {file_path}')
+        file_list.append(os.path.relpath(file_path, save_dir).replace('\\', '/'))
 
-        # 添加文件路径到列表中
-        relative_path = os.path.relpath(file_path, save_dir)
-        file_list.append(relative_path.replace('\\', '/'))
-    # 创建 HTML 查看器
-    html_content = create_html_viewer().replace('FILE_LIST', str(file_list))
+    html_content = create_html_viewer(file_list)
     main_html_path = os.path.join(save_dir, f'{name}_viewer.html')
     with open(main_html_path, 'w', encoding='utf-8') as f:
         f.write(html_content)
-    print(f'Saved main HTML viewer to {main_html_path}')
+    print(f"主HTML查看器已保存至: {main_html_path}")
 
-def get_keypoints_error(model, device, dataloader):
+def get_keypoints_error(model: Module, device: torch.device, dataloader: DataLoader) -> Dict:
     """
-    计算关键点的误差。
+    计算并汇总关键点在不同subjects和actions上的平均误差。
 
     Args:
-        model (torch.nn.Module): 训练好的模型。
-        device (torch.device): 设备，'cuda' 或 'cpu'。
-        dataloader (torch.utils.data.DataLoader): 数据加载器。
+        model (Module): 训练好的模型。
+        device (torch.device): 'cuda' 或 'cpu'。
+        dataloader (DataLoader): 数据加载器。
 
     Returns:
-        dict: 包含关键点误差的字典。
+        Dict: 包含按 subject 和 action 分类的关键点误差的字典。
     """
     model.eval()
+    all_errors, all_subjects, all_actions = [], [], []
 
-    all_errors = []
-    all_subjects = []
-    all_actions = []
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="正在计算关键点误差"):
+            batch_root_x = batch[0]['root'].to(device)
+            batch_rotations_x = batch[0]['rotations'].to(device)
+            batch_bone_lengths = batch[0]['bone_lengths'].to(device)
+            batch_root_y = batch[1]['root'].to(device)
+            batch_rotations_y = batch[1]['rotations'].to(device)
 
-    iterator = tqdm(dataloader, total=len(dataloader), desc=f"Calculating Keypoints Error")
+            root_out, rotations_out = model(batch_root_x, batch_rotations_x)
+            joints_predicted = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)
+            joints_gt = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)
 
-    for batch in iterator:
-        batch_root_x = batch[0]['root'].to(device)
-        batch_rotations_x = batch[0]['rotations'].to(device)
-        batch_bone_lengths = batch[0]['bone_lengths'].to(device)
+            errors = torch.norm(joints_predicted - joints_gt, p=2, dim=-1).mean(dim=(-1, -2))
+            all_errors.append(errors.cpu().numpy())
+            all_subjects.extend(batch[2][0])
+            all_actions.extend(batch[2][1])
 
-        batch_root_y = batch[1]['root'].to(device)
-        batch_rotations_y = batch[1]['rotations'].to(device)
+    df = pd.DataFrame({
+        'subject': all_subjects,
+        'action': all_actions,
+        'error': np.concatenate(all_errors)
+    })
 
-        meta_data = batch[2]
-
-        root_out, rotations_out = model(batch_root_x, batch_rotations_x)
-
-        joints_predicted = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)
-        joints_gt = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)
-
-        errors = torch.mean(torch.abs(joints_predicted - joints_gt), dim=(1, 2, 3))
-
-        all_errors.append(errors.detach().cpu().numpy())
-        all_subjects.extend(meta_data[0])
-        all_actions.extend(meta_data[1])
-
-    # 将所有批次的误差合并为一个 NumPy 数组
-    all_errors = np.concatenate(all_errors)
-    # 使用 Pandas DataFrame 来组织数据
-    df = pd.DataFrame({'subject': all_subjects, 'action': all_actions, 'error': all_errors})
-
-
-    # 1. 计算每个 subject 和 action 的平均损失以及每个 action 的数量
     error_df = df.groupby(['subject', 'action'])['error'].agg(['mean', 'count']).reset_index()
 
-    # 2. 计算每个 subject 的加权平均损失
-    subject_avg = {}
-    for subject in error_df['subject'].unique():
-        subject_data = error_df[error_df['subject'] == subject]
-        subject_avg[subject] = np.average(subject_data['mean'], weights=subject_data['count'])
+    subject_avg = {
+        subject: np.average(group['mean'], weights=group['count'])
+        for subject, group in error_df.groupby('subject')
+    }
 
-    # 3. 将每个 subject 的平均损失添加到 error_dict 中
     error_dict = error_df.groupby(['subject', 'action'])['mean'].mean().unstack(0).to_dict()
     for subject, avg in subject_avg.items():
-        error_dict[subject]['average'] = avg
+        if subject in error_dict:
+            error_dict[subject]['average'] = avg
 
-    # 4. 计算所有 action 的加权平均损失以及总体加权平均损失
-    all_actions_avg = {}
-    for action in error_df['action'].unique():
-        action_data = error_df[error_df['action'] == action]
-        all_actions_avg[action] = np.average(action_data['mean'], weights=action_data['count'])
-
-    overall_avg = np.average(error_df['mean'], weights=error_df['count'])
-    all_actions_avg['overall_average'] = overall_avg
-
+    all_actions_avg = {
+        action: np.average(group['mean'], weights=group['count'])
+        for action, group in error_df.groupby('action')
+    }
+    all_actions_avg['overall_average'] = np.average(error_df['mean'], weights=error_df['count'])
     error_dict['average'] = all_actions_avg
 
     return error_dict
 
-
-def create_html_viewer():
+def create_html_viewer(file_list: list) -> str:
     """
-    创建HTML查看器。
+    为一系列HTML文件创建一个主查看器页面。
+
+    Args:
+        file_list (list): 要在查看器中引用的HTML文件名列表。
 
     Returns:
-        str: HTML查看器的内容。
+        str: 包含完整HTML内容的字符串。
     """
-    html_content = """
+    files_json = json.dumps(file_list)
+    return f"""
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="zh">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>3D Pose Viewer</title>
+        <title>3D姿态查看器</title>
         <style>
-            body {
-                font-family: Arial, sans-serif;
-            }
-            #header {
-                position: fixed;
-                top: 0;
-                width: 100%;
-                background-color: #f8f9fa;
-                padding: 10px;
-                text-align: center;
-                border-bottom: 1px solid #ddd;
-            }
-            #content {
-                margin-top: 50px;
-                text-align: center;
-            }
-            button {
-                margin: 10px;
-                padding: 10px 20px;
-                font-size: 16px;
-            }
-            iframe {
-                width: 100%;
-                height: 80vh;
-                border: none;
-            }
+            body {{ font-family: sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }}
+            #header {{ flex: 0 0 auto; padding: 10px; text-align: center; background-color: #f0f0f0; border-bottom: 1px solid #ccc; }}
+            #content {{ flex: 1 1 auto; }}
+            iframe {{ width: 100%; height: 100%; border: none; }}
+            button {{ margin: 5px; padding: 10px; font-size: 16px; }}
         </style>
     </head>
     <body>
         <div id="header">
             <span id="filename"></span>
-            <button onclick="prevFrame()">上一张</button>
-            <button onclick="nextFrame()">下一张</button>
+            <button onclick="navigate(-1)">上一帧</button>
+            <button onclick="navigate(1)">下一帧</button>
         </div>
         <div id="content">
-            <iframe id="viewer" src=""></iframe>
+            <iframe id="viewer"></iframe>
         </div>
-
         <script>
-            const files = FILE_LIST;
-
+            const files = {files_json};
             let currentIndex = 0;
+            const viewer = document.getElementById('viewer');
+            const filenameDisplay = document.getElementById('filename');
 
-            function updateViewer() {
-                const viewer = document.getElementById('viewer');
-                const filenameDisplay = document.getElementById('filename');
-                viewer.src = files[currentIndex];
-                filenameDisplay.textContent = files[currentIndex];
-            }
-
-            function prevFrame() {
-                if (currentIndex > 0) {
-                    currentIndex--;
+            function updateViewer() {{
+                if (files.length > 0) {{
+                    const file = files[currentIndex];
+                    viewer.src = file;
+                    filenameDisplay.textContent = `文件: ${{file}} (${{currentIndex + 1}}/${{files.length}})`;
+                }}
+            }}
+            function navigate(direction) {{
+                const newIndex = currentIndex + direction;
+                if (newIndex >= 0 && newIndex < files.length) {{
+                    currentIndex = newIndex;
                     updateViewer();
-                }
-            }
-
-            function nextFrame() {
-                if (currentIndex < files.length - 1) {
-                    currentIndex++;
-                    updateViewer();
-                }
-            }
-
-            // Initialize viewer with the first file
+                }}
+            }}
             updateViewer();
         </script>
     </body>
     </html>
     """
-    return  html_content

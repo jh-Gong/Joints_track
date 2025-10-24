@@ -3,249 +3,202 @@ import shutil
 from datetime import datetime
 from tqdm import tqdm
 import json
+import argparse
+from typing import Union, Dict, Optional, Tuple
 
 import torch
 from torch import autograd
 from torch import optim
+from torch.nn import Module
+from torch.optim import Optimizer
+from torch.utils.data import DataLoader
 from tensorboardX import SummaryWriter
+from easydict import EasyDict as edict
 
 from mvn.utils import cfg
-from mvn.models.loss import KeypointsMSELoss, KeypointsMSESmoothLoss, KeypointsMAELoss, QuaternionAngleLoss, QuaternionChordalLoss
-from mvn.models.model import LstmModel, TransformerModel
+from mvn.models.loss import KeypointsMSELoss, KeypointsMSESmoothLoss, KeypointsMAELoss, QuaternionAngleLoss
+from mvn.models.builder import build_model
 from mvn.utils.data import setup_dataloaders
 import mvn.utils.misc as misc
 from mvn.utils.visual import save_3d_png, get_keypoints_error
 
-def setup_experiment(config, model_name, is_train=True):
+def setup_experiment(config: edict, model_name: str, is_train: bool = True) -> Tuple[str, SummaryWriter]:
     """
     准备实验所需的目录和日志。
 
     Args:
-        config (dict): 实验配置对象，包含实验的各种配置参数。
+        config (edict): 实验配置对象。
         model_name (str): 模型名称，用于生成实验标题。
-        is_train (bool, optional): 布尔值，表示是否为训练模式。默认为True。
+        is_train (bool, optional): 是否为训练模式。默认为True。
 
     Returns:
-        tuple:
-            - str: 实验目录路径。
-            - tensorboardX.SummaryWriter: TensorBoard SummaryWriter对象，用于记录训练或评估过程中的信息。
+        Tuple[str, SummaryWriter]: 实验目录路径和TensorBoard SummaryWriter对象。
     """
-    # 根据是否为训练模式，设置前缀为空或"eval_"
     prefix = "" if is_train else "eval_"
-
-    # 根据配置中的标题和模型名称生成实验标题
-    if config.title:
-        experiment_title = config.title + "_" + model_name
-    else:
-        experiment_title = model_name
-
-    # 添加前缀以区分训练和评估
+    experiment_title = (config.title + "_" + model_name) if config.title else model_name
     experiment_title = prefix + experiment_title
 
-    # 生成实验名称，包含标题和当前时间
-    experiment_name = '{}@{}'.format(experiment_title, datetime.now().strftime("%m-%d-%H-%M-%S.%Y"))
-    print("Experiment name: {}".format(experiment_name))
+    # 获取 'args' 变量
+    args = config.args
 
-    # 创建实验目录
+    experiment_name = f'{experiment_title}@{datetime.now().strftime("%m-%d-%H-%M-%S.%Y")}'
+    print(f"实验名称: {experiment_name}")
+
     experiment_dir = os.path.join(args.logdir, experiment_name)
     os.makedirs(experiment_dir, exist_ok=True)
 
-    # 创建检查点目录，用于保存模型权重
     checkpoints_dir = os.path.join(experiment_dir, "checkpoints")
     os.makedirs(checkpoints_dir, exist_ok=True)
 
-    # 将实验配置文件复制到实验目录中
     shutil.copy(args.config, os.path.join(experiment_dir, "config.yaml"))
 
-    # 创建TensorBoard SummaryWriter对象
     writer = SummaryWriter(os.path.join(experiment_dir, "tb"))
+    writer.add_text("config", misc.config_to_str(config), 0)
 
-    # 记录配置信息到TensorBoard
-    writer.add_text(misc.config_to_str(config), "config", 0)
-
-    # 返回实验目录路径和SummaryWriter对象
     return experiment_dir, writer
 
-def one_epoch(model, criterion, criterion_rotations, opt, config, dataloader, device, epoch, is_train=True, experiment_dir=None, writer=None):
+def one_epoch(
+    model: Module,
+    criterion: Module,
+    criterion_rotations: Module,
+    opt: Optional[Optimizer],
+    config: edict,
+    dataloader: DataLoader,
+    device: torch.device,
+    epoch: int,
+    is_train: bool = True,
+    experiment_dir: Optional[str] = None,
+    writer: Optional[SummaryWriter] = None
+) -> Optional[Dict]:
     """
     训练或验证模型一个epoch。
 
     Args:
-        model (torch.nn.Module): 使用的模型。
-        criterion (torch.nn.Module): 损失函数。
-        criterion_rotations (torch.nn.Module): 旋转损失函数。
-        opt (torch.optim.Optimizer): 优化器。
-        config (dict): 配置对象，包含模型和训练配置。
-        dataloader (torch.utils.data.DataLoader): 数据加载器。
-        device (torch.device): 设备，'cuda' 或 'cpu'。
+        model (Module): 使用的模型。
+        criterion (Module): 关键点损失函数。
+        criterion_rotations (Module): 旋转损失函数。
+        opt (Optional[Optimizer]): 优化器。
+        config (edict): 配置对象。
+        dataloader (DataLoader): 数据加载器。
+        device (torch.device): 'cuda' 或 'cpu'。
         epoch (int): 当前epoch编号。
-        is_train (bool, optional): 布尔值，表示是否为训练模式。默认为True。
-        experiment_dir (str, optional): 实验目录路径，用于保存结果。默认为None。
-        writer (tensorboardX.SummaryWriter, optional): TensorBoard writer，用于记录训练过程。默认为None。
+        is_train (bool, optional): 是否为训练模式。默认为True。
+        experiment_dir (Optional[str], optional): 实验目录路径。默认为None。
+        writer (Optional[SummaryWriter], optional): TensorBoard writer。默认为None。
 
     Returns:
-        dict or None: 如果`is_train`为False且`config.opt.save_keypoints_error`为True，则返回一个包含关键点错误的字典。否则，返回None。
+        Optional[Dict]: 如果是验证模式且需要保存关键点误差，则返回误差字典。
     """
-    # 根据训练或验证状态设置名称
     name = "train" if is_train else "val"
-    # 初始化总损失
     total_loss = 0.0
+    model.train() if is_train else model.eval()
 
-    # 根据训练或验证状态设置模型状态
-    if is_train:
-        model.train()
-    else:
-        model.eval()
-
-
-    # 确认梯度计算是否使用
     grad_context = torch.autograd.enable_grad if is_train else torch.no_grad
     with grad_context():
-        # 初始化
-        iterator = tqdm(enumerate(dataloader), total=len(dataloader), desc=f"{name} Epoch {epoch + 1}/{config.opt.n_epochs}")
-        # 遍历数据集中的每个批次
-        for batch_idx, batch in iterator:
-            with autograd.detect_anomaly():
-                # 检查批次是否为空
-                if batch is None:
-                    print("Found None batch")
-                    continue
+        iterator = tqdm(dataloader, desc=f"{name} Epoch {epoch + 1}/{config.opt.n_epochs}", total=len(dataloader))
+        for batch_idx, batch in enumerate(iterator):
+            if batch is None:
+                print("发现空批次，跳过。")
+                continue
 
-                batch_root_x = batch[0]['root'].to(device)
-                batch_rotations_x = batch[0]['rotations'].to(device)
+            batch_root_x = batch[0]['root'].to(device)
+            batch_rotations_x = batch[0]['rotations'].to(device)
+            batch_root_y = batch[1]['root'].to(device)
+            batch_rotations_y = batch[1]['rotations'].to(device)
 
-                batch_root_y = batch[1]['root'].to(device)
-                batch_rotations_y = batch[1]['rotations'].to(device)
+            root_out, rotations_out = model(batch_root_x, batch_rotations_x)
+            root_loss = criterion(root_out, batch_root_y)
+            rotations_loss = criterion_rotations(rotations_out, batch_rotations_y)
+            loss = root_loss + config.opt.rotation_loss_weight * rotations_loss
 
-                # 前向传播和反向梯度计算
-                root_out, rotations_out = model(batch_root_x, batch_rotations_x)
-                root_loss = criterion(root_out, batch_root_y)
-                rotations_loss = criterion_rotations(rotations_out, batch_rotations_y)
-                loss = root_loss + 10000 * rotations_loss
-                if is_train:
-                    opt.zero_grad()
-                    loss.backward()
-                    opt.step()
+            if is_train and opt:
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
 
-                # 累加损失
-                total_loss += loss.item()
+            total_loss += loss.item()
 
-                # 使用TensorBoard记录损失
-                if writer is not None:
-                    writer.add_scalar(f'Loss/root_{name}', root_loss.item(), epoch * len(dataloader) + batch_idx)
-                    writer.add_scalar(f'Loss/rotations_{name}', rotations_loss.item(), epoch * len(dataloader) + batch_idx)
-                    writer.add_scalar(f'Loss/batch_{name}', loss.item(), epoch * len(dataloader) + batch_idx)
+            if writer:
+                global_step = epoch * len(dataloader) + batch_idx
+                writer.add_scalar(f'Loss/root_{name}', root_loss.item(), global_step)
+                writer.add_scalar(f'Loss/rotations_{name}', rotations_loss.item(), global_step)
+                writer.add_scalar(f'Loss/batch_{name}', loss.item(), global_step)
 
-        # 计算平均损失
         avg_loss = total_loss / len(dataloader)
-        print(f'Epoch [{epoch+1}], {name} Loss: {avg_loss:.10f}')
+        print(f'Epoch [{epoch+1}], {name} 平均损失: {avg_loss:.10f}')
 
-        # 记录每个epoch的平均损失
-        if writer is not None:
+        if writer:
             writer.add_scalar(f'Loss/epoch_{name}', avg_loss, epoch)
 
-    # 定期保存3D图形
-    if config.opt.save_3d_png and epoch % config.opt.save_3d_png_freq == 0 and config.opt.n_joints == 17 :
-        print("Saving 3d png...")
+    if config.opt.save_3d_png and epoch % config.opt.save_3d_png_freq == 0 and config.opt.n_joints == 17:
+        print("保存3D可视化...")
         save_3d_png(model, device, dataloader, experiment_dir, name, epoch)
 
-    # 计算关节平均误差
-    if config.opt.save_keypoints_error and epoch % config.opt.save_keypoints_error_freq == 0 and is_train == False:
+    if not is_train and config.opt.save_keypoints_error and epoch % config.opt.save_keypoints_error_freq == 0:
         return get_keypoints_error(model, device, dataloader)
 
+    return None
 
-def main(args):
+def main(args: argparse.Namespace):
     """
     主函数，用于训练或评估模型。
 
     Args:
-        args (argparse.Namespace): 包含命令行参数的对象。
+        args (argparse.Namespace): 命令行参数。
     """
-    print("Number of available GPUs: {}".format(torch.cuda.device_count()))
+    print(f"可用GPU数量: {torch.cuda.device_count()}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # config
     config = cfg.load_config(args.config)
+    config.args = args  # 将args附加到config中
 
-    model = {
-        "lstm": LstmModel,
-        "transformer": TransformerModel
-    }[config.model.name]
+    model = build_model(config, device)
 
-    if config.model.name == "transformer":
-        model = model(
-            seq_len = config.opt.seq_len,
-            num_joints = config.opt.n_joints,
-            hidden_size = config.model.n_hidden_layer,
-            num_layers = config.model.n_layers,
-            num_heads = config.model.n_heads,
-            dropout_probability = config.model.dropout
-        ).to(device)
-    else:
-        raise NotImplementedError("Model not implemented")
-
-    if (config.model.init_weights):
-        print("Loading pretrained weights...")
-        model.load_state_dict(torch.load(config.model.checkpoint, weights_only=True))
-
-    # criterion
     criterion_class = {
         "mse": KeypointsMSELoss,
         "mse_smooth": KeypointsMSESmoothLoss,
         "mae": KeypointsMAELoss
     }[config.opt.criterion]
-
-    if config.opt.criterion == "mse_smooth":
-        criterion = criterion_class(config.opt.mse_smooth_threshold)
-    else:
-        criterion = criterion_class()
-
+    criterion = criterion_class(config.opt.mse_smooth_threshold) if config.opt.criterion == "mse_smooth" else criterion_class()
     criterion_rotations = QuaternionAngleLoss()
 
-    # optimizer
     opt = None
     if not args.eval:
-        model_total = sum([param.nelement() for param in model.parameters()])
-        print("Number of model_total parameter: %.8fM" % (model_total / 1e6))
+        model_total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        print(f"模型总参数量: {model_total_params / 1e6:.6f}M")
         opt = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.opt.lr)
 
-    # datasets
-    print("Loading data...")
-    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=True if not args.eval or args.eval_dataset=='train' else False)
+    print("加载数据...")
+    is_train_mode = not args.eval or args.eval_dataset == 'train'
+    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=is_train_mode)
 
-    # experiment
     experiment_dir, writer = setup_experiment(config, type(model).__name__, is_train=not args.eval)
 
     if not args.eval:
-        # train loop
         for epoch in range(config.opt.n_epochs):
             one_epoch(model, criterion, criterion_rotations, opt, config, train_dataloader, device, epoch, is_train=True, experiment_dir=experiment_dir, writer=writer)
-            loss_dict = one_epoch(model, criterion, criterion_rotations, opt, config, val_dataloader, device, epoch, is_train=False, experiment_dir=experiment_dir, writer=writer)
-            checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "{:04}".format(epoch))
+            loss_dict = one_epoch(model, criterion, criterion_rotations, None, config, val_dataloader, device, epoch, is_train=False, experiment_dir=experiment_dir, writer=writer)
+
+            checkpoint_dir = os.path.join(experiment_dir, "checkpoints", f"{epoch:04d}")
             os.makedirs(checkpoint_dir, exist_ok=True)
             torch.save(model.state_dict(), os.path.join(checkpoint_dir, "weights.pth"))
-            if loss_dict is not None:
-                 with open(os.path.join(checkpoint_dir, "loss.json"), 'w') as f:
-                     json.dump(loss_dict, f, indent=4)
 
-
+            if loss_dict:
+                with open(os.path.join(checkpoint_dir, "loss.json"), 'w') as f:
+                    json.dump(loss_dict, f, indent=4)
     else:
-        if args.eval_dataset == 'train':
-            loss_dict = one_epoch(model, criterion, criterion_rotations, opt, config, train_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
-        else:
-            loss_dict = one_epoch(model, criterion, criterion_rotations, opt, config, val_dataloader, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
+        dataloader_to_eval = train_dataloader if args.eval_dataset == 'train' else val_dataloader
+        loss_dict = one_epoch(model, criterion, criterion_rotations, None, config, dataloader_to_eval, device, 0, is_train=False, experiment_dir=experiment_dir, writer=writer)
 
-        checkpoint_dir = os.path.join(experiment_dir, "checkpoints", "average")
-        os.makedirs(checkpoint_dir, exist_ok=True)
-        if loss_dict is not None:
-            with open(os.path.join(checkpoint_dir, "loss.json"), 'w') as f:
+        result_dir = os.path.join(experiment_dir, "results")
+        os.makedirs(result_dir, exist_ok=True)
+        if loss_dict:
+            with open(os.path.join(result_dir, "final_loss.json"), 'w') as f:
                 json.dump(loss_dict, f, indent=4)
-
-
 
 if __name__ == '__main__':
     work_directory = os.path.dirname(os.path.abspath(__file__))
     args = cfg.parse_args(work_directory)
-    print("args: {}".format(args))
+    print(f"参数: {args}")
     main(args)
-    print("Done.")
+    print("完成。")
