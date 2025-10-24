@@ -21,13 +21,13 @@ def get_data_from_csv(data_path):
     从 CSV 文件中读取数据，并将其组织成两个形状为 [frame, 17, 3] 的 NumPy 数组。
 
     Args:
-        data_path: CSV 文件的路径。
+        data_path (str): CSV 文件的路径。
 
     Returns:
-        一个元组，包含两个 NumPy 数组：(pred_data, gt_data)，
-        其中 pred_data 是预测数据数组，gt_data 是真实值数据数组。
+        tuple:
+            - np.ndarray: 预测数据数组，形状为 `(num_frames, 17, 3)`。
+            - np.ndarray: 真实值数据数组，形状为 `(num_frames, 17, 3)`。
     """
-
     # 读取 CSV 文件
     df = pd.read_csv(data_path)
 
@@ -36,12 +36,20 @@ def get_data_from_csv(data_path):
     gt_cols = [col for col in df.columns if "_gt" in col]
 
     # 直接使用 numpy 进行 reshape，提高效率
-    pred_data = df[pred_cols].values.reshape(-1, 17, 3) 
-    gt_data = df[gt_cols].values.reshape(-1, 17, 3)    
+    pred_data = df[pred_cols].values.reshape(-1, 17, 3)
+    gt_data = df[gt_cols].values.reshape(-1, 17, 3)
 
     return pred_data, gt_data
 
 def main(config_path, data_path, model_path):
+    """
+    评估模型。
+
+    Args:
+        config_path (str): 配置文件路径。
+        data_path (str): 数据文件路径。
+        model_path (str): 模型文件路径。
+    """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     config = cfg.load_config(config_path)
 
@@ -137,7 +145,7 @@ def main(config_path, data_path, model_path):
     pred_data = torch.from_numpy(pred_data).to(device).float()
     joints_predicted[0] = pred_data[0]
     joints_predicted[1:seq_len + 1] = joints_predicted_with_seq[0]
-    joints_predicted[seq_len + 1:-1] = joints_predicted_with_seq[2:, -2, :, :] 
+    joints_predicted[seq_len + 1:-1] = joints_predicted_with_seq[2:, -2, :, :]
     joints_predicted[-1] = joints_predicted_with_seq[-1, -1, :, :]
 
 
@@ -156,10 +164,9 @@ def visualize_3d_motion(data, title="3D Motion Visualization"):
     可视化形状为 (frames, 17, 3) 的 3D 动作数据。
 
     Args:
-        data: 形状为 (frames, 17, 3) 的 NumPy 数组或 PyTorch 张量，表示 3D 动作数据。
-        title: 图表的标题。
+        data (np.ndarray or torch.Tensor): 形状为 `(num_frames, 17, 3)` 的 NumPy 数组或 PyTorch 张量，表示 3D 动作数据。
+        title (str, optional): 图表的标题。默认为 "3D Motion Visualization"。
     """
-
     # 如果是 PyTorch 张量，转换为 NumPy 数组
     if isinstance(data, torch.Tensor):
         data = data.cpu().numpy()
@@ -210,7 +217,7 @@ def visualize_3d_motion(data, title="3D Motion Visualization"):
 
             # 更新帧数显示
             frame_text.set_text(f"Frame: {frame + 1}/{data.shape[0]}")
-            
+
             # 返回需要更新的对象列表
             return lines + [frame_text]
         else:

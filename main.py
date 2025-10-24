@@ -21,13 +21,14 @@ def setup_experiment(config, model_name, is_train=True):
     准备实验所需的目录和日志。
 
     Args:
-        config: 实验配置对象，包含实验的各种配置参数。
-        model_name: 模型名称，用于生成实验标题。
-        is_train: 布尔值，表示是否为训练模式。默认为True。
+        config (dict): 实验配置对象，包含实验的各种配置参数。
+        model_name (str): 模型名称，用于生成实验标题。
+        is_train (bool, optional): 布尔值，表示是否为训练模式。默认为True。
 
     Returns:
-        experiment_dir: 实验目录路径。
-        writer: TensorBoard SummaryWriter对象，用于记录训练或评估过程中的信息。
+        tuple:
+            - str: 实验目录路径。
+            - tensorboardX.SummaryWriter: TensorBoard SummaryWriter对象，用于记录训练或评估过程中的信息。
     """
     # 根据是否为训练模式，设置前缀为空或"eval_"
     prefix = "" if is_train else "eval_"
@@ -69,18 +70,21 @@ def one_epoch(model, criterion, criterion_rotations, opt, config, dataloader, de
     """
     训练或验证模型一个epoch。
 
-    参数:
-    - model: 使用的模型。
-    - criterion: 损失函数。
-    - criterion_rotations: 旋转损失函数。
-    - opt: 优化器。
-    - config: 配置对象，包含模型和训练配置。
-    - dataloader: 数据加载器。
-    - device: 设备，'cuda' 或 'cpu'。
-    - epoch: 当前epoch编号。
-    - is_train: 布尔值，表示是否为训练模式。
-    - experiment_dir: 实验目录路径，用于保存结果。
-    - writer: TensorBoard writer，用于记录训练过程。
+    Args:
+        model (torch.nn.Module): 使用的模型。
+        criterion (torch.nn.Module): 损失函数。
+        criterion_rotations (torch.nn.Module): 旋转损失函数。
+        opt (torch.optim.Optimizer): 优化器。
+        config (dict): 配置对象，包含模型和训练配置。
+        dataloader (torch.utils.data.DataLoader): 数据加载器。
+        device (torch.device): 设备，'cuda' 或 'cpu'。
+        epoch (int): 当前epoch编号。
+        is_train (bool, optional): 布尔值，表示是否为训练模式。默认为True。
+        experiment_dir (str, optional): 实验目录路径，用于保存结果。默认为None。
+        writer (tensorboardX.SummaryWriter, optional): TensorBoard writer，用于记录训练过程。默认为None。
+
+    Returns:
+        dict or None: 如果`is_train`为False且`config.opt.save_keypoints_error`为True，则返回一个包含关键点错误的字典。否则，返回None。
     """
     # 根据训练或验证状态设置名称
     name = "train" if is_train else "val"
@@ -114,7 +118,7 @@ def one_epoch(model, criterion, criterion_rotations, opt, config, dataloader, de
                 batch_rotations_y = batch[1]['rotations'].to(device)
 
                 # 前向传播和反向梯度计算
-                root_out, rotations_out = model(batch_root_x, batch_rotations_x) 
+                root_out, rotations_out = model(batch_root_x, batch_rotations_x)
                 root_loss = criterion(root_out, batch_root_y)
                 rotations_loss = criterion_rotations(rotations_out, batch_rotations_y)
                 loss = root_loss + 10000 * rotations_loss
@@ -131,7 +135,7 @@ def one_epoch(model, criterion, criterion_rotations, opt, config, dataloader, de
                     writer.add_scalar(f'Loss/root_{name}', root_loss.item(), epoch * len(dataloader) + batch_idx)
                     writer.add_scalar(f'Loss/rotations_{name}', rotations_loss.item(), epoch * len(dataloader) + batch_idx)
                     writer.add_scalar(f'Loss/batch_{name}', loss.item(), epoch * len(dataloader) + batch_idx)
-        
+
         # 计算平均损失
         avg_loss = total_loss / len(dataloader)
         print(f'Epoch [{epoch+1}], {name} Loss: {avg_loss:.10f}')
@@ -149,8 +153,14 @@ def one_epoch(model, criterion, criterion_rotations, opt, config, dataloader, de
     if config.opt.save_keypoints_error and epoch % config.opt.save_keypoints_error_freq == 0 and is_train == False:
         return get_keypoints_error(model, device, dataloader)
 
-       
+
 def main(args):
+    """
+    主函数，用于训练或评估模型。
+
+    Args:
+        args (argparse.Namespace): 包含命令行参数的对象。
+    """
     print("Number of available GPUs: {}".format(torch.cuda.device_count()))
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -161,12 +171,12 @@ def main(args):
         "lstm": LstmModel,
         "transformer": TransformerModel
     }[config.model.name]
-    
+
     if config.model.name == "transformer":
         model = model(
             seq_len = config.opt.seq_len,
             num_joints = config.opt.n_joints,
-            hidden_size = config.model.n_hidden_layer, 
+            hidden_size = config.model.n_hidden_layer,
             num_layers = config.model.n_layers,
             num_heads = config.model.n_heads,
             dropout_probability = config.model.dropout
@@ -195,13 +205,13 @@ def main(args):
     # optimizer
     opt = None
     if not args.eval:
-        model_total = sum([param.nelement() for param in model.parameters()])  
+        model_total = sum([param.nelement() for param in model.parameters()])
         print("Number of model_total parameter: %.8fM" % (model_total / 1e6))
         opt = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=config.opt.lr)
 
     # datasets
     print("Loading data...")
-    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=True if not args.eval or args.eval_dataset=='train' else False) 
+    train_dataloader, val_dataloader = setup_dataloaders(config, is_train=True if not args.eval or args.eval_dataset=='train' else False)
 
     # experiment
     experiment_dir, writer = setup_experiment(config, type(model).__name__, is_train=not args.eval)
@@ -217,7 +227,7 @@ def main(args):
             if loss_dict is not None:
                  with open(os.path.join(checkpoint_dir, "loss.json"), 'w') as f:
                      json.dump(loss_dict, f, indent=4)
-            
+
 
     else:
         if args.eval_dataset == 'train':

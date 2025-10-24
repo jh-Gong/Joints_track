@@ -15,6 +15,15 @@ from tqdm import tqdm
 from mvn.datasets.dataset import Human36MMultiJointsDataset
 
 def load_hdf5_data(data_path):
+    """
+    加载HDF5数据。
+
+    Args:
+        data_path (str): HDF5文件的路径。
+
+    Returns:
+        dict: 包含加载的数据的字典。
+    """
     hdf5_data = {}
 
     try:
@@ -54,17 +63,17 @@ def setup_dataloaders(config, is_train=True):
     """
     根据配置和训练状态设置数据加载器。
 
-    参数:
-    - config: 包含数据集配置的配置对象。
-    - is_train: 布尔值，表示是否为训练模式。
+    Args:
+        config (easydict.EasyDict): 包含数据集配置的配置对象。
+        is_train (bool, optional): 布尔值，表示是否为训练模式。默认为True。
 
-    返回:
-    - train_dataloader: 训练数据加载器。
-    - val_dataloader: 验证数据加载器。
-    - scaling_info: 数据集缩放信息。
+    Returns:
+        tuple:
+            - torch.utils.data.DataLoader: 训练数据加载器。
+            - torch.utils.data.DataLoader: 验证数据加载器。
 
-    此函数根据配置文件中指定的数据集类型，设置相应的数据加载器。
-    如果数据集类型不是`human36m`，则抛出异常。
+    Raises:
+        NotImplementedError: 如果数据集类型未知。
     """
     # 根据配置文件中指定的数据集类型设置数据加载器
     if config.dataset.kind == 'human36m':
@@ -81,13 +90,14 @@ def setup_human36m_dataloaders(config: edict, is_train: bool):
     """
     根据配置和训练标志设置Human3.6M数据集的数据加载器。
 
-    参数:
-    - config: 包含数据集和训练配置的对象。(从yaml配置文件导入)
-    - is_train: 布尔值，指示是否需要设置训练数据加载器。
+    Args:
+        config (easydict.EasyDict): 包含数据集和训练配置的对象。(从yaml配置文件导入)
+        is_train (bool): 布尔值，指示是否需要设置训练数据加载器。
 
-    返回:
-    - train_dataloader: 训练数据加载器，如果is_train为False，则为None。
-    - val_dataloader: 验证数据加载器。
+    Returns:
+        tuple:
+            - torch.utils.data.DataLoader: 训练数据加载器，如果`is_train`为False，则为None。
+            - torch.utils.data.DataLoader: 验证数据加载器。
     """
     # 初始化训练数据加载器为None
     train_dataloader = None
@@ -124,4 +134,3 @@ def setup_human36m_dataloaders(config: edict, is_train: bool):
 
     # 返回训练和验证数据加载器
     return train_dataloader, val_dataloader
-

@@ -8,10 +8,24 @@ import torch
 from torch import nn
 
 class KeypointsMSELoss(nn.Module):
+    """
+    计算关键点预测与真实值之间的均方误差损失。
+    """
     def __init__(self):
         super().__init__()
 
     def forward(self, keypoints_pred, keypoints_gt, keypoints_binary_validity=None):
+        """
+        前向传播。
+
+        Args:
+            keypoints_pred (torch.Tensor): 预测的关键点，形状为 `(batch_size, ..., dimension)`。
+            keypoints_gt (torch.Tensor): 真实的关键点，形状为 `(batch_size, ..., dimension)`。
+            keypoints_binary_validity (torch.Tensor, optional): 一个二进制张量，用于指示哪些关键点是有效的。形状与`keypoints_pred`相同。默认为None。
+
+        Returns:
+            torch.Tensor: 计算出的损失。
+        """
         if keypoints_binary_validity is None:
             keypoints_binary_validity = torch.ones_like(keypoints_pred)
         dimension = keypoints_pred.shape[-1]
@@ -20,12 +34,30 @@ class KeypointsMSELoss(nn.Module):
         return loss
     
 class KeypointsMSESmoothLoss(nn.Module):
+    """
+    计算关键点预测与真实值之间的平滑均方误差损失。
+    对于大于阈值的误差，使用幂函数进行平滑。
+
+    Args:
+        threshold (int, optional): 误差阈值。默认为400。
+    """
     def __init__(self, threshold=400):
         super().__init__()
 
         self.threshold = threshold
 
     def forward(self, keypoints_pred, keypoints_gt, keypoints_binary_validity=None):
+        """
+        前向传播。
+
+        Args:
+            keypoints_pred (torch.Tensor): 预测的关键点，形状为 `(batch_size, ..., dimension)`。
+            keypoints_gt (torch.Tensor): 真实的关键点，形状为 `(batch_size, ..., dimension)`。
+            keypoints_binary_validity (torch.Tensor, optional): 一个二进制张量，用于指示哪些关键点是有效的。形状与`keypoints_pred`相同。默认为None。
+
+        Returns:
+            torch.Tensor: 计算出的损失。
+        """
         if keypoints_binary_validity is None:
             keypoints_binary_validity = torch.ones_like(keypoints_pred)
         dimension = keypoints_pred.shape[-1]
@@ -35,10 +67,24 @@ class KeypointsMSESmoothLoss(nn.Module):
         return loss
     
 class KeypointsMAELoss(nn.Module):
+    """
+    计算关键点预测与真实值之间的平均绝对误差损失。
+    """
     def __init__(self):
         super().__init__()
 
     def forward(self, keypoints_pred, keypoints_gt, keypoints_binary_validity=None):
+        """
+        前向传播。
+
+        Args:
+            keypoints_pred (torch.Tensor): 预测的关键点，形状为 `(batch_size, ..., dimension)`。
+            keypoints_gt (torch.Tensor): 真实的关键点，形状为 `(batch_size, ..., dimension)`。
+            keypoints_binary_validity (torch.Tensor, optional): 一个二进制张量，用于指示哪些关键点是有效的。形状与`keypoints_pred`相同。默认为None。
+
+        Returns:
+            torch.Tensor: 计算出的损失。
+        """
         if keypoints_binary_validity is None:
             keypoints_binary_validity = torch.ones_like(keypoints_pred)
         dimension = keypoints_pred.shape[-1]
@@ -47,10 +93,23 @@ class KeypointsMAELoss(nn.Module):
         return loss
     
 class QuaternionAngleLoss(nn.Module):
+    """
+    计算预测四元数与真实四元数之间的角度差损失。
+    """
     def __init__(self):
         super().__init__()
 
     def forward(self, quat_pred, quat_gt):
+        """
+        前向传播。
+
+        Args:
+            quat_pred (torch.Tensor): 预测的四元数，形状为 `(batch_size, ..., 4)`。
+            quat_gt (torch.Tensor): 真实的四元数，形状为 `(batch_size, ..., 4)`。
+
+        Returns:
+            torch.Tensor: 计算出的损失。
+        """
         dot_product = torch.sum(quat_pred * quat_gt, dim=-1)
         angle_diff = torch.acos(torch.clamp(dot_product, -1 + 1e-7, 1 - 1e-7)) * 2
 
@@ -58,10 +117,23 @@ class QuaternionAngleLoss(nn.Module):
         return loss
     
 class QuaternionChordalLoss(nn.Module):
+    """
+    计算预测四元数与真实四元数之间的弦长损失。
+    """
     def __init__(self):
         super().__init__()
 
     def forward(self, quat_pred, quat_gt):
+        """
+        前向传播。
+
+        Args:
+            quat_pred (torch.Tensor): 预测的四元数，形状为 `(batch_size, ..., 4)`。
+            quat_gt (torch.Tensor): 真实的四元数，形状为 `(batch_size, ..., 4)`。
+
+        Returns:
+            torch.Tensor: 计算出的损失。
+        """
         loss = torch.min(torch.norm(quat_pred - quat_gt, dim=-1),
                          torch.norm(quat_pred + quat_gt, dim=-1)).mean()
 

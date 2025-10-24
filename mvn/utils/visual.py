@@ -8,6 +8,17 @@ import plotly.graph_objects as go
 from mvn.utils.rebuild import rebuild_pose_from_root
 
 def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
+    """
+    保存3D姿态的可视化结果。
+
+    Args:
+        model (torch.nn.Module): 训练好的模型。
+        device (torch.device): 设备，'cuda' 或 'cpu'。
+        dataloader (torch.utils.data.DataLoader): 数据加载器。
+        experiment_dir (str): 实验目录。
+        name (str): 保存文件的前缀名。
+        epoch (int): 当前的epoch。
+    """
     model.eval()
     batch = next(iter(dataloader))
     batch_root_x = batch[0]['root'][0:1].to(device)  # (1, seq_len, 3)
@@ -134,9 +145,20 @@ def save_3d_png(model, device, dataloader, experiment_dir, name, epoch):
     print(f'Saved main HTML viewer to {main_html_path}')
 
 def get_keypoints_error(model, device, dataloader):
+    """
+    计算关键点的误差。
+
+    Args:
+        model (torch.nn.Module): 训练好的模型。
+        device (torch.device): 设备，'cuda' 或 'cpu'。
+        dataloader (torch.utils.data.DataLoader): 数据加载器。
+
+    Returns:
+        dict: 包含关键点误差的字典。
+    """
     model.eval()
 
-    all_errors = []  
+    all_errors = []
     all_subjects = []
     all_actions = []
 
@@ -157,10 +179,10 @@ def get_keypoints_error(model, device, dataloader):
         joints_predicted = rebuild_pose_from_root(root_out, rotations_out, batch_bone_lengths)
         joints_gt = rebuild_pose_from_root(batch_root_y, batch_rotations_y, batch_bone_lengths)
 
-        errors = torch.mean(torch.abs(joints_predicted - joints_gt), dim=(1, 2, 3))  
+        errors = torch.mean(torch.abs(joints_predicted - joints_gt), dim=(1, 2, 3))
 
         all_errors.append(errors.detach().cpu().numpy())
-        all_subjects.extend(meta_data[0])  
+        all_subjects.extend(meta_data[0])
         all_actions.extend(meta_data[1])
 
     # 将所有批次的误差合并为一个 NumPy 数组
@@ -198,6 +220,12 @@ def get_keypoints_error(model, device, dataloader):
 
 
 def create_html_viewer():
+    """
+    创建HTML查看器。
+
+    Returns:
+        str: HTML查看器的内容。
+    """
     html_content = """
     <!DOCTYPE html>
     <html lang="en">

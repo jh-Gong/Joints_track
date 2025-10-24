@@ -4,6 +4,15 @@ import argparse
 import os
 
 def load_config(path):
+    """
+    加载YAML配置文件。
+
+    Args:
+        path (str): YAML配置文件的路径。
+
+    Returns:
+        easydict.EasyDict: 包含配置信息的EasyDict对象。
+    """
     with open(path) as f:
         config = edict(yaml.safe_load(f))
 
@@ -13,11 +22,11 @@ def parse_args(work_directory: str):
     """
     解析命令行参数。
 
-    参数:
-    work_directory (str): 工作目录的路径。
+    Args:
+        work_directory (str): 工作目录的路径。
 
-    返回:
-    args: 解析后的命令行参数。
+    Returns:
+        argparse.Namespace: 包含解析后的命令行参数的对象。
     """
     # 创建ArgumentParser对象
     parser = argparse.ArgumentParser()
